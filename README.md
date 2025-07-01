@@ -33,15 +33,6 @@ echopath/
 - Python (v3.8 or higher)
 - npm or yarn
 
-### Quick Start
-
-For the fastest setup, use the development script:
-
-```bash
-./start-dev.sh
-```
-
-This will start both the FastAPI server and React development server simultaneously.
 
 ### Manual Setup
 
