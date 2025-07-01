@@ -1,0 +1,20 @@
+{
+  "name": "echopath",
+  "version": "1.0.0",
+  "description": "A full-stack web application with React + Vite frontend and FastAPI backend",
+  "scripts": {
+    "dev": "./start-dev.sh",
+    "client": "cd client && npm run dev",
+    "server": "cd server && /home/harsha/Documents/proj/echopath/.venv/bin/python main.py",
+    "build": "cd client && npm run build",
+    "install": "cd client && npm install",
+    "install-server": "cd server && pip install -r requirements.txt"
+  },
+  "keywords": ["react", "vite", "fastapi", "python", "fullstack"],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "your-repo-url"
+  }
+}
