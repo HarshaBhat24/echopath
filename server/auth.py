@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 import requests
+from firebase_service import firebase_service
 
 # Load environment variables
 load_dotenv()
@@ -34,13 +35,16 @@ class TokenData(BaseModel):
     email: Optional[str] = None
 
 class User(BaseModel):
+    uid: Optional[str] = None  # Firebase UID
     email: str
     full_name: Optional[str] = None
     is_active: bool = True
-    auth_provider: str = "email"  # "email" or "google"
+    auth_provider: str = "email"  # "email", "google", or "firebase"
+    photo_url: Optional[str] = None
+    email_verified: Optional[bool] = False
 
 class UserInDB(User):
-    hashed_password: Optional[str] = None  # Optional for Google users
+    hashed_password: Optional[str] = None  # Optional for Google/Firebase users
 
 class UserCreate(BaseModel):
     email: str
@@ -49,6 +53,9 @@ class UserCreate(BaseModel):
 
 class GoogleAuthRequest(BaseModel):
     access_token: str  # This will actually be the ID token from Google
+
+class FirebaseAuthRequest(BaseModel):
+    firebase_token: str  # Firebase ID token
 
 # Fake database - in production, use a real database
 fake_users_db = {}
@@ -61,19 +68,48 @@ def get_password_hash(password):
     """Hash a password."""
     return pwd_context.hash(password)
 
-def get_user(email: str):
-    """Get user from database."""
-    if email in fake_users_db:
-        user_dict = fake_users_db[email]
-        return UserInDB(**user_dict)
+def get_user(email: str = None, uid: str = None):
+    """Get user from database by email or UID."""
+    if uid:
+        # Try to get from Firebase first
+        firebase_user = firebase_service.get_user_by_uid(uid)
+        if firebase_user:
+            return UserInDB(
+                uid=firebase_user['uid'],
+                email=firebase_user['email'],
+                full_name=firebase_user.get('displayName', ''),
+                is_active=firebase_user.get('isActive', True),
+                auth_provider=firebase_user.get('authProvider', 'firebase'),
+                photo_url=firebase_user.get('photoURL', ''),
+                email_verified=firebase_user.get('emailVerified', False)
+            )
+    
+    if email:
+        # Try Firebase first
+        firebase_user = firebase_service.get_user_by_email(email)
+        if firebase_user:
+            return UserInDB(
+                uid=firebase_user['uid'],
+                email=firebase_user['email'],
+                full_name=firebase_user.get('displayName', ''),
+                is_active=firebase_user.get('isActive', True),
+                auth_provider=firebase_user.get('authProvider', 'firebase'),
+                photo_url=firebase_user.get('photoURL', ''),
+                email_verified=firebase_user.get('emailVerified', False)
+            )
+        
+        # Fallback to fake_users_db for legacy users
+        if email in fake_users_db:
+            user_dict = fake_users_db[email]
+            return UserInDB(**user_dict)
 
 def authenticate_user(email: str, password: str):
     """Authenticate a user with email and password."""
-    user = get_user(email)
+    user = get_user(email=email)
     if not user:
         return False
-    if user.auth_provider == "google":
-        # Google users don't have passwords
+    if user.auth_provider in ["google", "firebase"]:
+        # Google/Firebase users don't have passwords
         return False
     if not user.hashed_password or not verify_password(password, user.hashed_password):
         return False
@@ -95,6 +131,8 @@ def verify_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
+        uid: str = payload.get("uid")  # Firebase UID if available
+        
         if email is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -108,7 +146,9 @@ def verify_token(token: str):
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user = get_user(email=token_data.email)
+    
+    # Try to get user by UID first, then by email
+    user = get_user(uid=uid) if uid else get_user(email=token_data.email)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -197,3 +237,41 @@ def create_google_user(google_user_info: dict) -> User:
     }
     fake_users_db[email] = user_dict
     return User(**user_dict)
+
+async def verify_firebase_token(firebase_token: str) -> User:
+    """Verify Firebase token and return user info."""
+    try:
+        # Verify the Firebase token
+        user_info = firebase_service.verify_firebase_token(firebase_token)
+        if not user_info:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Firebase token"
+            )
+        
+        # Create or update user document in Firebase
+        success = firebase_service.create_user_document(user_info)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user profile"
+            )
+        
+        # Return user object
+        return User(
+            uid=user_info['uid'],
+            email=user_info['email'],
+            full_name=user_info.get('name', ''),
+            is_active=True,
+            auth_provider='firebase',
+            photo_url=user_info.get('picture', ''),
+            email_verified=user_info.get('email_verified', False)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Firebase token verification failed: {str(e)}"
+        )

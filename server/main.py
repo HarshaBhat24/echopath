@@ -11,7 +11,7 @@ import os
 from auth import (
     authenticate_user, create_access_token, verify_token, create_user,
     ACCESS_TOKEN_EXPIRE_MINUTES, Token, User, UserCreate, GoogleAuthRequest,
-    verify_google_token, create_google_user
+    verify_google_token, create_google_user, FirebaseAuthRequest, verify_firebase_token
 )
 
 app = FastAPI(
@@ -99,6 +99,30 @@ async def google_auth(request: GoogleAuthRequest):
             detail=f"Google authentication failed: {str(e)}"
         )
 
+@app.post("/api/auth/firebase", response_model=Token)
+async def firebase_auth(request: FirebaseAuthRequest):
+    """Authenticate with Firebase"""
+    try:
+        # Verify the Firebase token and get user info
+        user = await verify_firebase_token(request.firebase_token)
+        
+        # Create JWT token for our API
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        token_data = {"sub": user.email}
+        if user.uid:
+            token_data["uid"] = user.uid
+            
+        access_token = create_access_token(
+            data=token_data, expires_delta=access_token_expires
+        )
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Firebase authentication failed: {str(e)}"
+        )
+
 @app.get("/api/auth/me", response_model=User)
 async def read_users_me(current_user: User = Depends(get_current_user)):
     """Get current user info"""
@@ -130,11 +154,13 @@ async def server_info():
         "version": "1.0.0",
         "framework": "FastAPI with Uvicorn",
         "authentication": "JWT Bearer Token",
+        "supported_auth_providers": ["email", "google", "firebase"],
         "endpoints": [
             "/",
             "/api/auth/register",
             "/api/auth/login", 
             "/api/auth/google",
+            "/api/auth/firebase",
             "/api/auth/me",
             "/api/health",
             "/api/echo",

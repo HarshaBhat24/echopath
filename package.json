@@ -11,7 +11,7 @@
     "install-server": "cd server && pip install -r requirements.txt"
   },
   "keywords": ["react", "vite", "fastapi", "python", "fullstack"],
-  "author": "Your Name",
+  "author": "Harsha Bhat",
   "license": "MIT",
   "repository": {
     "type": "git",

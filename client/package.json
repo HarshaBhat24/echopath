@@ -12,6 +12,7 @@
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
     "axios": "^1.10.0",
+    "firebase": "^11.10.0",
     "google-auth-library": "^10.1.0",
     "js-cookie": "^3.0.5",
     "react": "^19.1.0",

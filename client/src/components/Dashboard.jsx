@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 import axios from 'axios'
 
-function Dashboard({ user, onLogout }) {
+function Dashboard() {
   const [message, setMessage] = useState('')
   const [response, setResponse] = useState('')
   const [loading, setLoading] = useState(false)
   const [serverStatus, setServerStatus] = useState('Checking...')
   const [serverInfo, setServerInfo] = useState(null)
+  
+  const { user, userProfile, signOut, apiToken } = useAuth()
 
   // Check server status on component mount
   useEffect(() => {
@@ -41,7 +44,7 @@ function Dashboard({ user, onLogout }) {
         message: message
       }, {
         headers: {
-          'Authorization': `Bearer ${user.token}`
+          'Authorization': `Bearer ${apiToken}`
         }
       })
       setResponse(result.data.echo)
@@ -57,10 +60,12 @@ function Dashboard({ user, onLogout }) {
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    onLogout()
+  const handleLogout = async () => {
+    try {
+      await signOut()
+    } catch (error) {
+      console.error('Logout error:', error)
+    }
   }
 
   return (
@@ -101,9 +106,21 @@ function Dashboard({ user, onLogout }) {
               <div className="text-right">
                 <p className="text-sm text-gray-600 dark:text-gray-300">Welcome back,</p>
                 <p className="font-medium text-gray-900 dark:text-white">
-                  {user.fullName || user.email}
+                  {user?.displayName || userProfile?.displayName || user?.email || 'User'}
                 </p>
+                {userProfile?.authProvider && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                    via {userProfile.authProvider}
+                  </p>
+                )}
               </div>
+              {user?.photoURL && (
+                <img 
+                  src={user.photoURL} 
+                  alt="Profile" 
+                  className="w-10 h-10 rounded-full border-2 border-gray-300"
+                />
+              )}
               <button
                 onClick={handleLogout}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors duration-200 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none"
