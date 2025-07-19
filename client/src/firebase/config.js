@@ -38,6 +38,6 @@ googleProvider.addScope('profile');
 //   }
 // }
 
-console.log('🔥 Firebase initialized for production use');
+console.log('Firebase initialized for production use');
 
 export default app;

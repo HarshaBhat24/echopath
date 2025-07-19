@@ -1,7 +1,6 @@
 fastapi==0.115.6
 uvicorn[standard]==0.33.0
 python-multipart==0.0.20
-python-cors==1.7.0
 pydantic==2.10.5
 python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
@@ -10,3 +9,7 @@ google-auth==2.40.3
 google-auth-oauthlib==1.2.2
 requests==2.32.4
 firebase-admin==6.6.0
+googletrans==4.0.0rc1
+pillow==11.3.0
+pytesseract==0.3.13
+SpeechRecognition==3.10.4

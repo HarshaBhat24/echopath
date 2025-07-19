@@ -1,11 +1,14 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import uvicorn
 from datetime import timedelta
 import os
+import io
+import tempfile
+import base64
 
 # Import our authentication modules
 from auth import (
@@ -14,9 +17,32 @@ from auth import (
     verify_google_token, create_google_user, FirebaseAuthRequest, verify_firebase_token
 )
 
+# Translation related imports (we'll implement these)
+try:
+    from googletrans import Translator
+    GOOGLETRANS_AVAILABLE = True
+except ImportError:
+    GOOGLETRANS_AVAILABLE = False
+    print("Warning: googletrans not available. Install with: pip install googletrans==4.0.0rc1")
+
+try:
+    import speech_recognition as sr
+    SPEECH_RECOGNITION_AVAILABLE = True
+except ImportError:
+    SPEECH_RECOGNITION_AVAILABLE = False
+    print("Warning: speech_recognition not available. Install with: pip install SpeechRecognition")
+
+try:
+    from PIL import Image
+    import pytesseract
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    print("Warning: OCR not available. Install with: pip install pillow pytesseract")
+
 app = FastAPI(
-    title="EchoPath API",
-    description="A simple FastAPI server for the EchoPath project with authentication",
+    title="EchoPath",
+    description="A simple FastAPI server for the EchoPath application",
     version="1.0.0"
 )
 
@@ -49,6 +75,33 @@ class EchoResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     message: str
+
+# Translation models
+class TextTranslationRequest(BaseModel):
+    text: str
+    source_lang: str = "auto"
+    target_lang: str = "en"
+
+class TranslationResponse(BaseModel):
+    original_text: str
+    translated_text: str
+    source_lang: str
+    target_lang: str
+    status: str
+
+class VoiceTranslationResponse(BaseModel):
+    transcribed_text: str
+    translated_text: str
+    source_lang: str
+    target_lang: str
+    status: str
+
+class PhotoTranslationResponse(BaseModel):
+    extracted_text: str
+    translated_text: str
+    source_lang: str
+    target_lang: str
+    status: str
 
 @app.get("/")
 async def root():
@@ -146,6 +199,175 @@ async def echo_message(request: EchoRequest, current_user: User = Depends(get_cu
         user_email=current_user.email
     )
 
+# Translation endpoints
+@app.post("/api/translate/text", response_model=TranslationResponse)
+async def translate_text_endpoint(request: TextTranslationRequest, current_user: User = Depends(get_current_user)):
+    """Translate text to the target language"""
+    if not GOOGLETRANS_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Translation service is not available. Please install googletrans."
+        )
+    
+    try:
+        translator = Translator()
+        
+        # Handle auto detection
+        if request.source_lang == "auto":
+            translation = translator.translate(request.text, dest=request.target_lang)
+            detected_lang = translation.src
+        else:
+            translation = translator.translate(request.text, src=request.source_lang, dest=request.target_lang)
+            detected_lang = request.source_lang
+        
+        return TranslationResponse(
+            original_text=request.text,
+            translated_text=translation.text,
+            source_lang=detected_lang,
+            target_lang=request.target_lang,
+            status="success"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Translation failed: {str(e)}"
+        )
+
+@app.post("/api/translate/voice", response_model=VoiceTranslationResponse)
+async def translate_voice_endpoint(
+    audio: UploadFile = File(...),
+    source_lang: str = Form("auto"),
+    target_lang: str = Form("en"),
+    current_user: User = Depends(get_current_user)
+):
+    """Transcribe audio and translate to target language"""
+    if not SPEECH_RECOGNITION_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Speech recognition service is not available. Please install SpeechRecognition."
+        )
+    
+    if not GOOGLETRANS_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Translation service is not available. Please install googletrans."
+        )
+    
+    try:
+        # Save uploaded audio to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
+            content = await audio.read()
+            temp_audio.write(content)
+            temp_audio_path = temp_audio.name
+        
+        # Transcribe audio
+        r = sr.Recognizer()
+        with sr.AudioFile(temp_audio_path) as source:
+            audio_data = r.record(source)
+            
+        # Use Google Speech Recognition
+        try:
+            if source_lang == "auto":
+                transcribed_text = r.recognize_google(audio_data)
+            else:
+                transcribed_text = r.recognize_google(audio_data, language=source_lang)
+        except sr.UnknownValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not understand audio"
+            )
+        except sr.RequestError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Speech recognition service error: {str(e)}"
+            )
+        
+        # Translate transcribed text
+        translator = Translator()
+        if source_lang == "auto":
+            translation = translator.translate(transcribed_text, dest=target_lang)
+            detected_lang = translation.src
+        else:
+            translation = translator.translate(transcribed_text, src=source_lang, dest=target_lang)
+            detected_lang = source_lang
+        
+        # Clean up temporary file
+        os.unlink(temp_audio_path)
+        
+        return VoiceTranslationResponse(
+            transcribed_text=transcribed_text,
+            translated_text=translation.text,
+            source_lang=detected_lang,
+            target_lang=target_lang,
+            status="success"
+        )
+    except Exception as e:
+        # Clean up temporary file if it exists
+        try:
+            os.unlink(temp_audio_path)
+        except:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Voice translation failed: {str(e)}"
+        )
+
+@app.post("/api/translate/photo", response_model=PhotoTranslationResponse)
+async def translate_photo_endpoint(
+    image: UploadFile = File(...),
+    source_lang: str = Form("auto"),
+    target_lang: str = Form("en"),
+    current_user: User = Depends(get_current_user)
+):
+    """Extract text from image and translate to target language"""
+    if not OCR_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OCR service is not available. Please install pillow and pytesseract."
+        )
+    
+    if not GOOGLETRANS_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Translation service is not available. Please install googletrans."
+        )
+    
+    try:
+        # Read and process image
+        image_content = await image.read()
+        img = Image.open(io.BytesIO(image_content))
+        
+        # Extract text using OCR
+        extracted_text = pytesseract.image_to_string(img)
+        
+        if not extracted_text.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No text found in the image"
+            )
+        
+        # Translate extracted text
+        translator = Translator()
+        if source_lang == "auto":
+            translation = translator.translate(extracted_text, dest=target_lang)
+            detected_lang = translation.src
+        else:
+            translation = translator.translate(extracted_text, src=source_lang, dest=target_lang)
+            detected_lang = source_lang
+        
+        return PhotoTranslationResponse(
+            extracted_text=extracted_text.strip(),
+            translated_text=translation.text,
+            source_lang=detected_lang,
+            target_lang=target_lang,
+            status="success"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Photo translation failed: {str(e)}"
+        )
+
 @app.get("/api/info")
 async def server_info():
     """Get server information"""
@@ -155,6 +377,11 @@ async def server_info():
         "framework": "FastAPI with Uvicorn",
         "authentication": "JWT Bearer Token",
         "supported_auth_providers": ["email", "google", "firebase"],
+        "translation_services": {
+            "text_translation": GOOGLETRANS_AVAILABLE,
+            "voice_recognition": SPEECH_RECOGNITION_AVAILABLE,
+            "ocr": OCR_AVAILABLE
+        },
         "endpoints": [
             "/",
             "/api/auth/register",
@@ -164,7 +391,10 @@ async def server_info():
             "/api/auth/me",
             "/api/health",
             "/api/echo",
-            "/api/info"
+            "/api/info",
+            "/api/translate/text",
+            "/api/translate/voice",
+            "/api/translate/photo"
         ]
     }
 
