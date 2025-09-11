@@ -84,19 +84,40 @@ function PhotoTranslation() {
     }
   }
 
+  const getApiToken = async (currentUser) => {
+    let token = localStorage.getItem('api_token')
+    if (!token && currentUser) {
+      const idToken = await currentUser.getIdToken()
+      const resp = await fetch('http://localhost:8000/api/auth/firebase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firebase_token: idToken })
+      })
+      if (resp.ok) {
+        const data = await resp.json()
+        token = data.access_token
+        localStorage.setItem('api_token', token)
+      }
+    }
+    return token
+  }
+
   const handleTranslate = async () => {
     if (!selectedImage) return
 
     setIsProcessing(true)
     try {
+      const token = await getApiToken(user)
       const formData = new FormData()
       formData.append('image', selectedImage)
       formData.append('source_lang', sourceLang)
       formData.append('target_lang', targetLang)
 
-      // Replace this with your actual photo translation API call
-      const response = await fetch('http://localhost:8000/translate/photo', {
+      const response = await fetch('http://localhost:8000/api/translate/photo', {
         method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: formData
       })
 

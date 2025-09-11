@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "A full-stack web application with React + Vite frontend and FastAPI backend",
   "scripts": {
-    "dev": "cd client/ && vite",
     "client": "cd client && npm run dev",
     "servers": "cd server && /home/harsha/Documents/proj/echopath/.venv/bin/python3 main.py",
     "build": "cd client && npm run build",
@@ -15,6 +14,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "your-repo-url"
+    "url": "https://github.com/HarshaBhat24/echopath"
   }
 }

@@ -37,16 +37,35 @@ function TextTranslation() {
     return () => unsubscribe()
   }, [navigate])
 
+  const getApiToken = async (currentUser) => {
+    let token = localStorage.getItem('api_token')
+    if (!token && currentUser) {
+      const idToken = await currentUser.getIdToken()
+      const resp = await fetch('http://localhost:8000/api/auth/firebase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firebase_token: idToken })
+      })
+      if (resp.ok) {
+        const data = await resp.json()
+        token = data.access_token
+        localStorage.setItem('api_token', token)
+      }
+    }
+    return token
+  }
+
   const handleTranslate = async () => {
     if (!inputText.trim()) return
 
     setIsTranslating(true)
     try {
-      // Replace this with your actual translation API call
-      const response = await fetch('http://localhost:8000/translate/text', {
+      const token = await getApiToken(user)
+      const response = await fetch('http://localhost:8000/api/translate/text', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
           text: inputText,
