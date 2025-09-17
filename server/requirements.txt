@@ -9,7 +9,13 @@ google-auth==2.40.3
 google-auth-oauthlib==1.2.2
 requests==2.32.4
 firebase-admin==6.6.0
-googletrans==4.0.0rc1
 pillow==11.3.0
 pytesseract==0.3.13
 SpeechRecognition==3.10.4
+googletrans==4.0.0rc1
+# IndicTrans2 dependencies
+torch>=2.3.0
+transformers>=4.40.0
+indictranstoolkit>=0.1.13
+sentencepiece>=0.2.0
+langdetect>=1.0.9

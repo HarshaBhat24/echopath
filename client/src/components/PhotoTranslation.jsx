@@ -11,7 +11,7 @@ function PhotoTranslation() {
   const [extractedText, setExtractedText] = useState('')
   const [translatedText, setTranslatedText] = useState('')
   const [sourceLang, setSourceLang] = useState('auto')
-  const [targetLang, setTargetLang] = useState('es')
+  const [targetLang, setTargetLang] = useState('hi')
   const [isProcessing, setIsProcessing] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef(null)
@@ -89,14 +89,46 @@ function PhotoTranslation() {
 
     setIsProcessing(true)
     try {
+      // Get auth token for API call
+      let token = localStorage.getItem('api_token')
+      if (!token && auth?.currentUser) {
+        try {
+          const idToken = await auth.currentUser.getIdToken()
+          const authResponse = await fetch('http://localhost:8000/api/auth/firebase', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              firebase_token: idToken
+            })
+          })
+          if (authResponse.ok) {
+            const authData = await authResponse.json()
+            token = authData.access_token
+            if (token) {
+              localStorage.setItem('api_token', token)
+            }
+          }
+        } catch (e) {
+          console.error('API auth exchange failed:', e)
+        }
+      }
+
       const formData = new FormData()
       formData.append('image', selectedImage)
       formData.append('source_lang', sourceLang)
       formData.append('target_lang', targetLang)
 
-      // Replace this with your actual photo translation API call
-      const response = await fetch('http://localhost:8000/translate/photo', {
+      const headers = {}
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      // Call the correct API endpoint with authentication
+      const response = await fetch('http://localhost:8000/api/translate/photo', {
         method: 'POST',
+        headers: headers,
         body: formData
       })
 
@@ -105,12 +137,15 @@ function PhotoTranslation() {
         setExtractedText(data.extracted_text)
         setTranslatedText(data.translated_text)
       } else {
-        throw new Error('Translation failed')
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.detail || `Translation failed (${response.status})`
+        throw new Error(errorMessage)
       }
     } catch (error) {
       console.error('Translation error:', error)
+      const errorMessage = error.message || 'Translation failed. Please try again.'
       setExtractedText('Text extraction failed. Please try again.')
-      setTranslatedText('Translation failed. Please try again.')
+      setTranslatedText(errorMessage)
     } finally {
       setIsProcessing(false)
     }

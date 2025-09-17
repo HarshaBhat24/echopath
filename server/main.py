@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -17,13 +18,56 @@ from auth import (
     verify_google_token, create_google_user, FirebaseAuthRequest, verify_firebase_token
 )
 
-# Translation related imports (we'll implement these)
+# Translation related imports
 try:
-    from googletrans import Translator
+    from deep_translator import GoogleTranslator
     GOOGLETRANS_AVAILABLE = True
 except ImportError:
     GOOGLETRANS_AVAILABLE = False
-    print("Warning: googletrans not available. Install with: pip install googletrans==4.0.0rc1")
+    print("Warning: deep-translator not available. Install with: pip install deep-translator")
+
+# Map UI language codes to googletrans ISO codes
+GTRANS_CODE_MAP = {
+    "en": "en",
+    "hi": "hi",
+    "ka": "kn",  # Kannada
+    "ta": "ta",
+    "te": "te",
+    "ma": "ml",  # Malayalam
+    "be": "bn",  # Bengali
+}
+
+def _map_gtrans(code: str) -> str:
+    return GTRANS_CODE_MAP.get(code, code)
+
+def _deep_translate(text: str, source_lang: str, target_lang: str):
+    """Helper function for deep-translator translation"""
+    source_mapped = _map_gtrans(source_lang) if source_lang != "auto" else "auto"
+    target_mapped = _map_gtrans(target_lang)
+    
+    translator = GoogleTranslator(source=source_mapped, target=target_mapped)
+    translated_text = translator.translate(text)
+    
+    # For auto detection, try to get detected language
+    if source_lang == "auto":
+        # deep-translator doesn't provide detected language directly
+        # Use another translator instance to detect
+        detector = GoogleTranslator(source="auto", target="en")
+        detector.translate(text)  # This should populate the source
+        detected_lang = detector.source if hasattr(detector, 'source') else "auto"
+    else:
+        detected_lang = source_lang
+    
+    return translated_text, detected_lang
+
+# Try to load IndicTrans2 service
+try:
+    from indictrans_service import IndicTransService, is_available as _indic_is_available
+    INDIC_AVAILABLE = _indic_is_available()
+except Exception as _e:
+    INDIC_AVAILABLE = False
+    IndicTransService = None  # type: ignore
+    print(f"Warning: IndicTrans2 service not available: {_e}")
 
 try:
     import speech_recognition as sr
@@ -40,10 +84,23 @@ except ImportError:
     OCR_AVAILABLE = False
     print("Warning: OCR not available. Install with: pip install pillow pytesseract")
 
+# Preload models at startup for lower first-latency if available
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if 'IndicTransService' in globals() and INDIC_AVAILABLE:
+        try:
+            svc = IndicTransService.get()
+            info = svc.preload_all()
+            print(f"IndicTrans2 preloaded on {info.get('device')}.")
+        except Exception as e:
+            print(f"IndicTrans2 preload failed: {e}")
+    yield
+
 app = FastAPI(
     title="EchoPath",
     description="A simple FastAPI server for the EchoPath application",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -203,35 +260,82 @@ async def echo_message(request: EchoRequest, current_user: User = Depends(get_cu
 @app.post("/api/translate/text", response_model=TranslationResponse)
 async def translate_text_endpoint(request: TextTranslationRequest, current_user: User = Depends(get_current_user)):
     """Translate text to the target language"""
-    if not GOOGLETRANS_AVAILABLE:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Translation service is not available. Please install googletrans."
-        )
-    
-    try:
-        translator = Translator()
-        
-        # Handle auto detection
-        if request.source_lang == "auto":
-            translation = translator.translate(request.text, dest=request.target_lang)
-            detected_lang = translation.src
-        else:
-            translation = translator.translate(request.text, src=request.source_lang, dest=request.target_lang)
-            detected_lang = request.source_lang
-        
-        return TranslationResponse(
-            original_text=request.text,
-            translated_text=translation.text,
-            source_lang=detected_lang,
-            target_lang=request.target_lang,
-            status="success"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Translation failed: {str(e)}"
-        )
+    # Prefer IndicTrans2 if available, else fallback to googletrans
+    if INDIC_AVAILABLE:
+        try:
+            svc = IndicTransService.get()
+            translated, src_tag, tgt_tag = svc.translate(
+                request.text, request.source_lang, request.target_lang
+            )
+            return TranslationResponse(
+                original_text=request.text,
+                translated_text=translated,
+                source_lang=src_tag,
+                target_lang=tgt_tag,
+                status="success"
+            )
+        except ValueError as ve:
+            # If unsupported code caused failure and googletrans is available, try fallback
+            if GOOGLETRANS_AVAILABLE:
+                try:
+                    translated_text, detected_lang = _deep_translate(
+                        request.text, request.source_lang, request.target_lang
+                    )
+                    return TranslationResponse(
+                        original_text=request.text,
+                        translated_text=translated_text,
+                        source_lang=detected_lang,
+                        target_lang=request.target_lang,
+                        status="success(fallback)"
+                    )
+                except Exception:
+                    pass
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(ve)
+            )
+        except Exception as e:
+            # If IndicTrans2 fails and googletrans is available, try fallback
+            if GOOGLETRANS_AVAILABLE:
+                try:
+                    translated_text, detected_lang = _deep_translate(
+                        request.text, request.source_lang, request.target_lang
+                    )
+                    return TranslationResponse(
+                        original_text=request.text,
+                        translated_text=translated_text,
+                        source_lang=detected_lang,
+                        target_lang=request.target_lang,
+                        status="success(fallback)"
+                    )
+                except Exception:
+                    pass
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Translation failed: {str(e)}"
+            )
+    else:
+        if not GOOGLETRANS_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No translation backend available (IndicTrans2/Googletrans)."
+            )
+        try:
+            translated_text, detected_lang = _deep_translate(
+                request.text, request.source_lang, request.target_lang
+            )
+            return TranslationResponse(
+                original_text=request.text,
+                translated_text=translated_text,
+                source_lang=detected_lang,
+                target_lang=request.target_lang,
+                status="success"
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Translation failed: {str(e)}"
+            )
 
 @app.post("/api/translate/voice", response_model=VoiceTranslationResponse)
 async def translate_voice_endpoint(
@@ -283,20 +387,16 @@ async def translate_voice_endpoint(
             )
         
         # Translate transcribed text
-        translator = Translator()
-        if source_lang == "auto":
-            translation = translator.translate(transcribed_text, dest=target_lang)
-            detected_lang = translation.src
-        else:
-            translation = translator.translate(transcribed_text, src=source_lang, dest=target_lang)
-            detected_lang = source_lang
+        translated_text, detected_lang = _deep_translate(
+            transcribed_text, source_lang, target_lang
+        )
         
         # Clean up temporary file
         os.unlink(temp_audio_path)
         
         return VoiceTranslationResponse(
             transcribed_text=transcribed_text,
-            translated_text=translation.text,
+            translated_text=translated_text,
             source_lang=detected_lang,
             target_lang=target_lang,
             status="success"
@@ -347,17 +447,13 @@ async def translate_photo_endpoint(
             )
         
         # Translate extracted text
-        translator = Translator()
-        if source_lang == "auto":
-            translation = translator.translate(extracted_text, dest=target_lang)
-            detected_lang = translation.src
-        else:
-            translation = translator.translate(extracted_text, src=source_lang, dest=target_lang)
-            detected_lang = source_lang
+        translated_text, detected_lang = _deep_translate(
+            extracted_text, source_lang, target_lang
+        )
         
         return PhotoTranslationResponse(
             extracted_text=extracted_text.strip(),
-            translated_text=translation.text,
+            translated_text=translated_text,
             source_lang=detected_lang,
             target_lang=target_lang,
             status="success"
@@ -378,7 +474,7 @@ async def server_info():
         "authentication": "JWT Bearer Token",
         "supported_auth_providers": ["email", "google", "firebase"],
         "translation_services": {
-            "text_translation": GOOGLETRANS_AVAILABLE,
+            "text_translation": INDIC_AVAILABLE or GOOGLETRANS_AVAILABLE,
             "voice_recognition": SPEECH_RECOGNITION_AVAILABLE,
             "ocr": OCR_AVAILABLE
         },
@@ -397,6 +493,16 @@ async def server_info():
             "/api/translate/photo"
         ]
     }
+
+@app.post("/api/translate/warmup")
+async def warmup_translation(current_user: User = Depends(get_current_user)):
+    if not INDIC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="IndicTrans2 not available")
+    try:
+        svc = IndicTransService.get()
+        return svc.warmup()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/auth/google/test")
 async def test_google_config():
