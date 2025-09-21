@@ -69,11 +69,11 @@ function SimpleDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-8 min-h-screen flex flex-col">
+    <div className="page-container page-bg">
+      <div className="page-inner container mx-auto min-h-screen flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">🎉 EchoPath</h1>
+          <h1 className="section-title">🎉 EchoPath</h1>
           <div className="relative" ref={profileRef}>
             <button
               onClick={() => setShowProfile(!showProfile)}
@@ -88,7 +88,7 @@ function SimpleDashboard() {
               )}
             </button>
             {showProfile && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl p-4 z-10">
+              <div className="absolute right-0 mt-2 w-64 card p-4 z-10 text-white">
                 <div className="flex items-center mb-4">
                   {user.photoURL && (
                     <img
@@ -98,14 +98,14 @@ function SimpleDashboard() {
                     />
                   )}
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium">
                       {user.displayName || 'User'}
                     </p>
-                    <p className="text-xs text-gray-600">{user.email}</p>
+                    <p className="text-xs text-white/80">{user.email}</p>
                   </div>
                 </div>
-                <div className="border-t border-gray-200 pt-4">
-                  <p className="text-sm text-gray-600 mb-2">
+                <div className="border-t border-white/20 pt-4">
+                  <p className="text-sm text-white/80 mb-2">
                     Email Verified: {' '}
                     <span className={`text-xs font-medium ${
                       user.emailVerified ? 'text-green-600' : 'text-yellow-600'
@@ -113,16 +113,13 @@ function SimpleDashboard() {
                       {user.emailVerified ? '✅ Verified' : '⚠️ Not Verified'}
                     </span>
                   </p>
-                  <p className="text-sm text-gray-600 mb-2">
+                  <p className="text-sm text-white/80 mb-2">
                     Account Created: {new Date(user.metadata.creationTime).toLocaleDateString()}
                   </p>
-                  <p className="text-sm text-gray-600 mb-4">
+                  <p className="text-sm text-white/80 mb-4">
                     Last Sign In: {new Date(user.metadata.lastSignInTime).toLocaleDateString()}
                   </p>
-                  <button
-                    onClick={handleSignOut}
-                    className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                  >
+                  <button onClick={handleSignOut} className="btn-ghost w-full">
                     Sign Out
                   </button>
                 </div>

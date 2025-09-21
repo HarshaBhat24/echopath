@@ -1,3 +1,35 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Design tokens */
+:root {
+	--color-brand: #7c3aed;       /* violet-600 */
+	--color-accent: #06b6d4;      /* cyan-500 */
+	--color-bg-900: #0b1020;      /* deep navy */
+	--color-bg-800: #121a3a;      /* indigo navy */
+	--color-bg-700: #1b1b3a;      /* slate navy */
+}
+
+/* Global helpers */
+.page-bg {
+	background:
+	radial-gradient(1200px 600px at 10% 10%, color-mix(in oklab, var(--color-brand) 35%, transparent), transparent 60%),
+	radial-gradient(1000px 500px at 90% 20%, color-mix(in oklab, var(--color-accent) 25%, transparent), transparent 60%),
+		linear-gradient(to bottom right, var(--color-bg-900), var(--color-bg-800) 50%, var(--color-bg-700));
+}
+
+/* Component primitives without @apply for broad compatibility */
+.page-container { min-height: 100vh; width: 100%; position: relative; overflow: hidden; color: white; }
+.page-inner { position: relative; z-index: 10; width: 100%; height: 100%; padding: 2rem 1rem; }
+
+.card { background: rgba(255,255,255,0.10); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.15); border-radius: 1rem; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 0.75rem; font-weight: 600; transition: all 150ms ease; outline: none; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { padding: 0.75rem 1.25rem; background: var(--color-brand); color: #fff; }
+.btn-primary:hover { filter: brightness(1.1); }
+.btn-secondary { padding: 0.75rem 1.25rem; background: var(--color-accent); color: #000; }
+.btn-secondary:hover { filter: brightness(1.1); }
+.btn-ghost { padding: 0.5rem 1rem; background: rgba(255,255,255,0.15); color: #fff; }
+.btn-ghost:hover { background: rgba(255,255,255,0.25); }
+
+.section-title { font-size: clamp(1.875rem, 2vw + 1rem, 2.25rem); font-weight: 800; }

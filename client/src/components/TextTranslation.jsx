@@ -130,9 +130,9 @@ function TextTranslation() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 relative overflow-hidden">
+    <div className="page-container page-bg">
       {/* Enhanced Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden">
+  <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-20 w-72 h-72 bg-gradient-to-r from-pink-300 to-purple-400 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-pulse"></div>
         <div className="absolute top-40 right-20 w-96 h-96 bg-gradient-to-r from-purple-400 to-indigo-500 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-pulse animation-delay-2000"></div>
         <div className="absolute bottom-20 left-1/3 w-80 h-80 bg-gradient-to-r from-indigo-400 to-cyan-400 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-pulse animation-delay-4000"></div>
@@ -155,9 +155,9 @@ function TextTranslation() {
         </div>
       </div>
 
-      <div className="relative z-10 w-full h-full px-4 py-8 overflow-x-hidden">
+  <div className="page-inner overflow-x-hidden pointer-events-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-12 max-w-7xl mx-auto">
+  <div className="flex items-center justify-between mb-12 max-w-7xl mx-auto">
           <div className="flex items-center space-x-6">
             <button
               onClick={() => navigate('/dashboard')}
@@ -173,7 +173,7 @@ function TextTranslation() {
                 <span className="text-5xl">�</span>
                 <span>Text Translation</span>
               </h1>
-              <p className="text-purple-200 mt-2 text-lg">Break language barriers with AI-powered translation</p>
+              <p className="text-white/80 mt-2 text-lg">Break language barriers with AI-powered translation</p>
             </div>
           </div>
         </div>
@@ -181,8 +181,8 @@ function TextTranslation() {
         {/* Main Translation Interface */}
         <div className="max-w-7xl mx-auto">
           {/* Language Selection Card */}
-          <div className="bg-white/15 backdrop-blur-xl rounded-3xl border border-white/25 p-8 mb-10 shadow-2xl hover:shadow-blue-500/25 transition-all duration-500">
-            <div className="flex items-center justify-center space-x-12">
+          <div className="card p-6 mb-10 transition-all duration-500">
+            <div className="flex items-center justify-center space-x-8">
               {/* Source Language */}
               <div className="flex flex-col space-y-4">
                 <label className="text-white text-lg font-bold uppercase tracking-wider drop-shadow-lg">From Language</label>
@@ -205,7 +205,7 @@ function TextTranslation() {
               <button
                 onClick={swapLanguages}
                 disabled={sourceLang === 'auto'}
-                className="group mt-12 p-4 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-500 rounded-2xl text-white hover:from-blue-600 hover:via-indigo-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-500 shadow-2xl hover:shadow-blue-500/50"
+                className="group mt-10 p-4 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-500 rounded-2xl text-white hover:from-blue-600 hover:via-indigo-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-500 shadow-2xl hover:shadow-blue-500/50"
               >
                 <svg className="w-8 h-8 group-hover:rotate-180 transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m0-4l4-4" />
@@ -235,8 +235,8 @@ function TextTranslation() {
           {/* Translation Boxes */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
             {/* Input Box */}
-            <div className="group bg-white/15 backdrop-blur-xl rounded-3xl border border-white/25 shadow-2xl hover:shadow-blue-500/25 transition-all duration-500 overflow-hidden">
-              <div className="flex justify-between items-center p-8 border-b border-white/20 bg-gradient-to-r from-white/10 to-transparent">
+            <div className="group card shadow-2xl hover:shadow-blue-500/25 transition-all duration-500 overflow-hidden">
+              <div className="flex justify-between items-center p-6 border-b border-white/20 bg-gradient-to-r from-white/10 to-transparent">
                 <div className="flex items-center space-x-4">
                   <span className="text-4xl drop-shadow-lg">{getLanguageByCode(sourceLang).flag}</span>
                   <h3 className="text-2xl font-bold text-white drop-shadow-lg">
@@ -253,21 +253,21 @@ function TextTranslation() {
                   </svg>
                 </button>
               </div>
-              <div className="p-8">
+              <div className="p-6">
                 <textarea
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="Type or paste your text here and watch the magic happen..."
-                  className="w-full h-72 bg-transparent text-white placeholder-white/50 resize-none focus:outline-none text-xl leading-relaxed font-medium"
+                  className="w-full h-60 bg-transparent text-white placeholder-white/50 resize-none focus:outline-none text-xl leading-relaxed font-medium"
                 />
-                <div className="flex justify-between items-center mt-6">
+                <div className="flex justify-between items-center mt-4">
                   <span className="text-white/70 text-lg font-medium">
                     {inputText.length} characters
                   </span>
                   <button
                     onClick={handleTranslate}
                     disabled={!inputText.trim() || isTranslating}
-                    className="group relative px-10 py-4 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-500 text-white rounded-2xl font-bold text-lg hover:from-blue-600 hover:via-indigo-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-500 shadow-2xl hover:shadow-blue-500/50"
+                    className="btn-primary relative px-10 py-4 rounded-2xl text-lg shadow-2xl hover:shadow-blue-500/50"
                   >
                     {isTranslating ? (
                       <div className="flex items-center space-x-3">
@@ -285,8 +285,8 @@ function TextTranslation() {
             </div>
 
             {/* Output Box */}
-            <div className={`group bg-white/15 backdrop-blur-xl rounded-3xl border border-white/25 shadow-2xl transition-all duration-500 overflow-hidden ${animateTranslation ? 'ring-4 ring-blue-400/50 shadow-blue-500/50' : 'hover:shadow-blue-500/25'}`}>
-              <div className="flex justify-between items-center p-8 border-b border-white/20 bg-gradient-to-r from-white/10 to-transparent">
+            <div className={`group card shadow-2xl transition-all duration-500 overflow-hidden ${animateTranslation ? 'ring-4 ring-blue-400/50 shadow-blue-500/50' : 'hover:shadow-blue-500/25'}`}>
+              <div className="flex justify-between items-center p-6 border-b border-white/20 bg-gradient-to-r from-white/10 to-transparent">
                 <div className="flex items-center space-x-4">
                   <span className="text-4xl drop-shadow-lg">{getLanguageByCode(targetLang).flag}</span>
                   <h3 className="text-2xl font-bold text-white drop-shadow-lg">
@@ -305,8 +305,8 @@ function TextTranslation() {
                   </button>
                 )}
               </div>
-              <div className="p-8">
-                <div className="w-full h-72 flex items-start">
+              <div className="p-6">
+                <div className="w-full h-60 flex items-start">
                   {translatedText ? (
                     <p className="text-white text-xl leading-relaxed whitespace-pre-wrap break-words w-full font-medium">
                       {translatedText}

@@ -11,7 +11,7 @@ function PhotoTranslation() {
   const [extractedText, setExtractedText] = useState('')
   const [translatedText, setTranslatedText] = useState('')
   const [sourceLang, setSourceLang] = useState('auto')
-  const [targetLang, setTargetLang] = useState('hi')
+  const [targetLang, setTargetLang] = useState('es')
   const [isProcessing, setIsProcessing] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef(null)
@@ -89,46 +89,14 @@ function PhotoTranslation() {
 
     setIsProcessing(true)
     try {
-      // Get auth token for API call
-      let token = localStorage.getItem('api_token')
-      if (!token && auth?.currentUser) {
-        try {
-          const idToken = await auth.currentUser.getIdToken()
-          const authResponse = await fetch('http://localhost:8000/api/auth/firebase', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              firebase_token: idToken
-            })
-          })
-          if (authResponse.ok) {
-            const authData = await authResponse.json()
-            token = authData.access_token
-            if (token) {
-              localStorage.setItem('api_token', token)
-            }
-          }
-        } catch (e) {
-          console.error('API auth exchange failed:', e)
-        }
-      }
-
       const formData = new FormData()
       formData.append('image', selectedImage)
       formData.append('source_lang', sourceLang)
       formData.append('target_lang', targetLang)
 
-      const headers = {}
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
-
-      // Call the correct API endpoint with authentication
-      const response = await fetch('http://localhost:8000/api/translate/photo', {
+      // Replace this with your actual photo translation API call
+      const response = await fetch('http://localhost:8000/translate/photo', {
         method: 'POST',
-        headers: headers,
         body: formData
       })
 
@@ -137,15 +105,12 @@ function PhotoTranslation() {
         setExtractedText(data.extracted_text)
         setTranslatedText(data.translated_text)
       } else {
-        const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.detail || `Translation failed (${response.status})`
-        throw new Error(errorMessage)
+        throw new Error('Translation failed')
       }
     } catch (error) {
       console.error('Translation error:', error)
-      const errorMessage = error.message || 'Translation failed. Please try again.'
       setExtractedText('Text extraction failed. Please try again.')
-      setTranslatedText(errorMessage)
+      setTranslatedText('Translation failed. Please try again.')
     } finally {
       setIsProcessing(false)
     }
@@ -213,8 +178,8 @@ function PhotoTranslation() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-8">
+    <div className="page-container page-bg">
+      <div className="page-inner container mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center">
@@ -231,7 +196,7 @@ function PhotoTranslation() {
         {/* Translation Interface */}
         <div className="max-w-6xl mx-auto">
           {/* Language Selection */}
-          <div className="bg-white rounded-lg shadow-xl p-6 mb-6">
+          <div className="card p-6 mb-6">
             <div className="flex items-center justify-center space-x-8">
               <div className="flex flex-col">
                 <label className="text-sm font-medium text-gray-700 mb-2">From</label>
@@ -266,7 +231,7 @@ function PhotoTranslation() {
           </div>
 
           {/* Image Upload/Capture Interface */}
-          <div className="bg-white rounded-lg shadow-xl p-6 mb-6">
+          <div className="card p-6 mb-6">
             {!imagePreview ? (
               <div
                 className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
@@ -343,7 +308,7 @@ function PhotoTranslation() {
           {(extractedText || translatedText) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Extracted Text */}
-              <div className="bg-white rounded-lg shadow-xl p-6">
+              <div className="card p-6">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Extracted Text</h3>
                 <div className="p-4 border border-gray-300 rounded-lg bg-gray-50 min-h-32 max-h-64 overflow-y-auto">
                   {extractedText ? (
@@ -355,7 +320,7 @@ function PhotoTranslation() {
               </div>
 
               {/* Translation */}
-              <div className="bg-white rounded-lg shadow-xl p-6">
+              <div className="card p-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-semibold text-gray-800">Translation</h3>
                   {translatedText && (

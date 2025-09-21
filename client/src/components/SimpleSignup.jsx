@@ -93,23 +93,23 @@ function SimpleSignup() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
+    <div className="page-container page-bg flex items-center justify-center p-4">
       <div className="max-w-md w-full">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8">
+        <div className="card p-8">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Create Account</h1>
-            <p className="text-gray-600 dark:text-gray-300 mt-2">Join us today</p>
+            <h1 className="section-title">Create Account</h1>
+            <p className="text-white/80 mt-2">Join us today</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+              <div className="bg-red-500/15 border border-red-500/30 text-red-300 px-4 py-3 rounded-md">
                 <p className="text-sm">{error}</p>
               </div>
             )}
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="email" className="block text-sm font-medium text-white/90 mb-2">
                 Email Address
               </label>
               <input
@@ -119,13 +119,13 @@ function SimpleSignup() {
                 required
                 value={formData.email}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 rounded-md shadow-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-white/30 bg-white/10 text-white border border-white/20"
                 placeholder="Enter your email"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-white/90 mb-2">
                 Password
               </label>
               <input
@@ -135,13 +135,13 @@ function SimpleSignup() {
                 required
                 value={formData.password}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 rounded-md shadow-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-white/30 bg-white/10 text-white border border-white/20"
                 placeholder="Create a password (min 6 characters)"
               />
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-white/90 mb-2">
                 Confirm Password
               </label>
               <input
@@ -151,7 +151,7 @@ function SimpleSignup() {
                 required
                 value={formData.confirmPassword}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 rounded-md shadow-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-white/30 bg-white/10 text-white border border-white/20"
                 placeholder="Confirm your password"
               />
             </div>
@@ -159,7 +159,7 @@ function SimpleSignup() {
             <button
               type="submit"
               disabled={loading || googleLoading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full btn-primary"
             >
               {loading ? (
                 <div className="flex items-center">
@@ -178,7 +178,7 @@ function SimpleSignup() {
                 <div className="w-full border-t border-gray-300 dark:border-gray-600" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">Or continue with</span>
+                <span className="px-2 bg-transparent text-white/70">Or continue with</span>
               </div>
             </div>
 
@@ -186,7 +186,7 @@ function SimpleSignup() {
               type="button"
               onClick={handleGoogleSignUp}
               disabled={loading || googleLoading}
-              className="mt-4 w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-4 w-full btn-ghost"
             >
               {googleLoading ? (
                 <div className="flex items-center">
@@ -208,9 +208,9 @@ function SimpleSignup() {
           </div>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600 dark:text-gray-300">
+            <p className="text-sm text-white/80">
               Already have an account?{' '}
-              <Link to="/login" className="font-medium text-green-600 hover:text-green-500 dark:text-green-400">
+              <Link to="/login" className="font-medium underline hover:opacity-80">
                 Sign in
               </Link>
             </p>
