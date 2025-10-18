@@ -201,6 +201,8 @@ class IndicTransService:
 
         # Preprocess -> tokenize -> generate -> decode -> postprocess
         batch_inputs = ip.preprocess_batch([text], src_lang=src_tag, tgt_lang=tgt_tag)
+        print(f"[IndicTrans] Preprocessed batch: {batch_inputs}")
+        
         batch_tokens = tokenizer(
             batch_inputs,
             padding=True,
@@ -208,29 +210,58 @@ class IndicTransService:
             max_length=512,
             return_tensors="pt",
         )
+        print(f"[IndicTrans] Tokenization result keys: {batch_tokens.keys()}")
+        
         # Defensive checks
         input_ids = batch_tokens.get("input_ids")
         if input_ids is None or input_ids.numel() == 0:
             raise ValueError("Tokenization produced empty input. Please check the text input.")
+        print(f"[IndicTrans] Input IDs shape: {input_ids.shape}")
+        
+        attention_mask = batch_tokens.get("attention_mask")
+        print(f"[IndicTrans] Attention mask: {attention_mask}")
+        if attention_mask is None:
+            # Create a default attention mask if missing
+            attention_mask = torch.ones_like(input_ids)
+            batch_tokens["attention_mask"] = attention_mask
+            print(f"[IndicTrans] Created default attention mask")
+        
         batch_tokens = {k: v.to(self.device) for k, v in batch_tokens.items()}
+        print(f"[IndicTrans] After moving to device, input_ids shape: {batch_tokens['input_ids'].shape}")
+        print(f"[IndicTrans] After moving to device, attention_mask shape: {batch_tokens['attention_mask'].shape}")
 
         # Ensure pad token defined for generation on some models
         if getattr(tokenizer, "pad_token_id", None) is None and getattr(tokenizer, "eos_token_id", None) is not None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
+        
+        print(f"[IndicTrans] Tokenizer pad_token_id: {tokenizer.pad_token_id}")
+        print(f"[IndicTrans] Tokenizer eos_token_id: {tokenizer.eos_token_id}")
 
         gen_kwargs = {
             "input_ids": batch_tokens["input_ids"],
-            "attention_mask": batch_tokens.get("attention_mask"),
+            "attention_mask": batch_tokens["attention_mask"],
             "num_beams": 5,
             "num_return_sequences": 1,
             "max_length": 256,
-            "pad_token_id": tokenizer.pad_token_id,
+            "use_cache": False,  # Disable KV caching to avoid past_key_values issues
         }
+        
+        # Only add pad_token_id if it's defined
+        if tokenizer.pad_token_id is not None:
+            gen_kwargs["pad_token_id"] = tokenizer.pad_token_id
+        
+        print(f"[IndicTrans] gen_kwargs keys: {gen_kwargs.keys()}")
+        print(f"[IndicTrans] About to call model.generate()")
 
         try:
             with torch.inference_mode():
                 outputs = model.generate(**gen_kwargs)
+            print(f"[IndicTrans] Generation successful, outputs shape: {outputs.shape}")
         except Exception as gen_err:
+            print(f"[IndicTrans] Generation error type: {type(gen_err)}")
+            print(f"[IndicTrans] Generation error: {gen_err}")
+            import traceback
+            traceback.print_exc()
             raise ValueError(f"Generation failed: {gen_err}")
 
         decoded = tokenizer.batch_decode(

@@ -162,3 +162,5 @@ ui-debug.log
 # Miscellaneous
 *.local
 .env.backup
+
+FIREBASE_SETUP.md

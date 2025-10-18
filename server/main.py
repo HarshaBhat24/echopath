@@ -10,6 +10,15 @@ import os
 import io
 import tempfile
 import base64
+# Whisper model cache
+_WHISPER_MODEL = None
+
+def _get_whisper_model(name: str = "base.en"):
+    global _WHISPER_MODEL
+    if _WHISPER_MODEL is None:
+        import whisper  # type: ignore
+        _WHISPER_MODEL = whisper.load_model(name)
+    return _WHISPER_MODEL
 
 # Import our authentication modules
 from auth import (
@@ -20,11 +29,11 @@ from auth import (
 
 # Translation related imports
 try:
-    from deep_translator import GoogleTranslator
+    from googletrans import Translator
     GOOGLETRANS_AVAILABLE = True
 except ImportError:
     GOOGLETRANS_AVAILABLE = False
-    print("Warning: deep-translator not available. Install with: pip install deep-translator")
+    print("Warning: googletrans not available. Install with: pip install googletrans==4.0.0rc1")
 
 # Map UI language codes to googletrans ISO codes
 GTRANS_CODE_MAP = {
@@ -39,26 +48,6 @@ GTRANS_CODE_MAP = {
 
 def _map_gtrans(code: str) -> str:
     return GTRANS_CODE_MAP.get(code, code)
-
-def _deep_translate(text: str, source_lang: str, target_lang: str):
-    """Helper function for deep-translator translation"""
-    source_mapped = _map_gtrans(source_lang) if source_lang != "auto" else "auto"
-    target_mapped = _map_gtrans(target_lang)
-    
-    translator = GoogleTranslator(source=source_mapped, target=target_mapped)
-    translated_text = translator.translate(text)
-    
-    # For auto detection, try to get detected language
-    if source_lang == "auto":
-        # deep-translator doesn't provide detected language directly
-        # Use another translator instance to detect
-        detector = GoogleTranslator(source="auto", target="en")
-        detector.translate(text)  # This should populate the source
-        detected_lang = detector.source if hasattr(detector, 'source') else "auto"
-    else:
-        detected_lang = source_lang
-    
-    return translated_text, detected_lang
 
 # Try to load IndicTrans2 service
 try:
@@ -149,6 +138,7 @@ class TranslationResponse(BaseModel):
 class VoiceTranslationResponse(BaseModel):
     transcribed_text: str
     translated_text: str
+    romanized_text: str | None = None
     source_lang: str
     target_lang: str
     status: str
@@ -158,6 +148,14 @@ class PhotoTranslationResponse(BaseModel):
     translated_text: str
     source_lang: str
     target_lang: str
+    status: str
+
+class OCRExtractionResponse(BaseModel):
+    extracted_text: str
+    transliterated_text: str | None = None
+    translated_text: str | None = None
+    source_lang: str | None = None
+    target_lang: str | None = None
     status: str
 
 @app.get("/")
@@ -260,6 +258,8 @@ async def echo_message(request: EchoRequest, current_user: User = Depends(get_cu
 @app.post("/api/translate/text", response_model=TranslationResponse)
 async def translate_text_endpoint(request: TextTranslationRequest, current_user: User = Depends(get_current_user)):
     """Translate text to the target language"""
+    print(f"Translation request - text: '{request.text}', source: {request.source_lang}, target: {request.target_lang}")
+    
     # Prefer IndicTrans2 if available, else fallback to googletrans
     if INDIC_AVAILABLE:
         try:
@@ -275,40 +275,60 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
                 status="success"
             )
         except ValueError as ve:
+            print(f"IndicTrans2 ValueError: {ve}")
             # If unsupported code caused failure and googletrans is available, try fallback
             if GOOGLETRANS_AVAILABLE:
                 try:
-                    translated_text, detected_lang = _deep_translate(
-                        request.text, request.source_lang, request.target_lang
-                    )
+                    translator = Translator()
+                    if request.source_lang == "auto":
+                        translation = translator.translate(
+                            request.text, dest=_map_gtrans(request.target_lang)
+                        )
+                        detected_lang = translation.src
+                    else:
+                        translation = translator.translate(
+                            request.text,
+                            src=_map_gtrans(request.source_lang),
+                            dest=_map_gtrans(request.target_lang),
+                        )
+                        detected_lang = request.source_lang
                     return TranslationResponse(
                         original_text=request.text,
-                        translated_text=translated_text,
+                        translated_text=translation.text,
                         source_lang=detected_lang,
                         target_lang=request.target_lang,
                         status="success(fallback)"
                     )
-                except Exception:
+                except Exception as fallback_err:
+                    print(f"Googletrans fallback error: {fallback_err}")
                     pass
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(ve)
             )
         except Exception as e:
+            print(f"IndicTrans2 general error: {e}")
             # If IndicTrans2 fails and googletrans is available, try fallback
             if GOOGLETRANS_AVAILABLE:
                 try:
-                    translated_text, detected_lang = _deep_translate(
-                        request.text, request.source_lang, request.target_lang
-                    )
+                    translator = Translator()
+                    if request.source_lang == "auto":
+                        translation = translator.translate(request.text, dest=request.target_lang)
+                        detected_lang = translation.src
+                    else:
+                        translation = translator.translate(
+                            request.text, src=request.source_lang, dest=request.target_lang
+                        )
+                        detected_lang = request.source_lang
                     return TranslationResponse(
                         original_text=request.text,
-                        translated_text=translated_text,
+                        translated_text=translation.text,
                         source_lang=detected_lang,
                         target_lang=request.target_lang,
                         status="success(fallback)"
                     )
-                except Exception:
+                except Exception as fallback_err2:
+                    print(f"Googletrans fallback error 2: {fallback_err2}")
                     pass
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -321,12 +341,22 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
                 detail="No translation backend available (IndicTrans2/Googletrans)."
             )
         try:
-            translated_text, detected_lang = _deep_translate(
-                request.text, request.source_lang, request.target_lang
-            )
+            translator = Translator()
+            if request.source_lang == "auto":
+                translation = translator.translate(
+                    request.text, dest=_map_gtrans(request.target_lang)
+                )
+                detected_lang = translation.src
+            else:
+                translation = translator.translate(
+                    request.text,
+                    src=_map_gtrans(request.source_lang),
+                    dest=_map_gtrans(request.target_lang),
+                )
+                detected_lang = request.source_lang
             return TranslationResponse(
                 original_text=request.text,
-                translated_text=translated_text,
+                translated_text=translation.text,
                 source_lang=detected_lang,
                 target_lang=request.target_lang,
                 status="success"
@@ -344,72 +374,238 @@ async def translate_voice_endpoint(
     target_lang: str = Form("en"),
     current_user: User = Depends(get_current_user)
 ):
-    """Transcribe audio and translate to target language"""
-    if not SPEECH_RECOGNITION_AVAILABLE:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Speech recognition service is not available. Please install SpeechRecognition."
-        )
-    
-    if not GOOGLETRANS_AVAILABLE:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Translation service is not available. Please install googletrans."
-        )
-    
+    """Transcribe audio (offline Whisper if available) and translate via IndicTrans2.
+
+    Returns transcribed_text (English), translated_text (native script), and romanized_text (IAST) when available.
+    """
+    # Prefer Whisper offline
+    whisper_available = False
     try:
-        # Save uploaded audio to temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
+        import whisper  # type: ignore
+        whisper_available = True
+    except Exception:
+        whisper_available = False
+
+    # Load IndicTrans service
+    svc = None
+    if INDIC_AVAILABLE:
+        try:
+            svc = IndicTransService.get()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"IndicTrans2 init failed: {e}")
+    else:
+        raise HTTPException(status_code=503, detail="IndicTrans2 not available on server")
+
+    # Romanization support (optional)
+    romanized = None
+    try:
+        from indic_transliteration import sanscript as _sanscript  # type: ignore
+        from indic_transliteration.sanscript import transliterate as _transliterate  # type: ignore
+        HAVE_ROM = True
+    except Exception:
+        HAVE_ROM = False
+
+    temp_audio_path = None
+    try:
+        # Persist uploaded audio with best-guess extension
+        filename = getattr(audio, 'filename', 'upload') or 'upload'
+        _, ext = os.path.splitext(filename)
+        ext = ext if ext else ".wav"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_audio:
             content = await audio.read()
             temp_audio.write(content)
             temp_audio_path = temp_audio.name
-        
-        # Transcribe audio
-        r = sr.Recognizer()
-        with sr.AudioFile(temp_audio_path) as source:
-            audio_data = r.record(source)
-            
-        # Use Google Speech Recognition
+
+        # 1) STT
+        if whisper_available:
+            try:
+                model = _get_whisper_model("base.en")
+                try:
+                    import torch as _torch  # type: ignore
+                    use_fp16 = _torch.cuda.is_available()
+                except Exception:
+                    use_fp16 = False
+                result = model.transcribe(temp_audio_path, language="en", task="transcribe", fp16=use_fp16)
+                transcribed_text = (result.get("text") or "").strip()
+            except Exception as we:
+                raise HTTPException(status_code=500, detail=f"Whisper failed: {we}")
+        else:
+            # Fallback minimal SR path (may be online if using Google)
+            if not SPEECH_RECOGNITION_AVAILABLE:
+                raise HTTPException(status_code=503, detail="No STT backend available (install whisper or SpeechRecognition)")
+            try:
+                r = sr.Recognizer()
+                with sr.AudioFile(temp_audio_path) as source:
+                    audio_data = r.record(source)
+                try:
+                    transcribed_text = r.recognize_sphinx(audio_data)
+                except Exception:
+                    transcribed_text = r.recognize_google(audio_data)
+            except Exception as se:
+                raise HTTPException(status_code=500, detail=f"STT failed: {se}")
+
+        if not transcribed_text:
+            raise HTTPException(status_code=400, detail="No speech detected in audio")
+
+        # 2) MT via IndicTrans2
         try:
-            if source_lang == "auto":
-                transcribed_text = r.recognize_google(audio_data)
-            else:
-                transcribed_text = r.recognize_google(audio_data, language=source_lang)
-        except sr.UnknownValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not understand audio"
-            )
-        except sr.RequestError as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Speech recognition service error: {str(e)}"
-            )
-        
-        # Translate transcribed text
-        translated_text, detected_lang = _deep_translate(
-            transcribed_text, source_lang, target_lang
-        )
-        
-        # Clean up temporary file
-        os.unlink(temp_audio_path)
-        
+            translated, src_tag, tgt_tag = svc.translate(transcribed_text, "en", target_lang)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as te:
+            raise HTTPException(status_code=500, detail=f"Translation failed: {te}")
+
+        # 3) Romanize for display (optional)
+        if HAVE_ROM:
+            try:
+                tag_to_scheme = {
+                    "hin_Deva": _sanscript.DEVANAGARI,
+                    "kan_Knda": _sanscript.KANNADA,
+                    "tam_Taml": _sanscript.TAMIL,
+                    "tel_Telu": _sanscript.TELUGU,
+                    "mal_Mlym": _sanscript.MALAYALAM,
+                    "ben_Beng": _sanscript.BENGALI,
+                }
+                scheme = tag_to_scheme.get(tgt_tag)
+                if scheme:
+                    romanized = _transliterate(translated, scheme, _sanscript.IAST)
+            except Exception:
+                romanized = None
+
         return VoiceTranslationResponse(
             transcribed_text=transcribed_text,
-            translated_text=translated_text,
-            source_lang=detected_lang,
+            translated_text=translated,
+            romanized_text=romanized,
+            source_lang=src_tag,
+            target_lang=tgt_tag,
+            status="success"
+        )
+    finally:
+        if temp_audio_path and os.path.exists(temp_audio_path):
+            try:
+                os.unlink(temp_audio_path)
+            except Exception:
+                pass
+
+@app.post("/api/ocr/extract", response_model=OCRExtractionResponse)
+async def extract_text_from_image(
+    image: UploadFile = File(...),
+    lang: str = Form("eng"),
+    source_lang: str = Form("auto"),
+    target_lang: str = Form(None),
+    transliterate: bool = Form(False)
+):
+    """Extract text from image using OCR with optional translation and transliteration
+    
+    OCR languages:
+    - eng: English
+    - kan: Kannada
+    - hin: Hindi
+    - tam: Tamil
+    - tel: Telugu
+    - mal: Malayalam
+    - ben: Bengali
+    - kan+eng: Kannada + English combined
+    
+    Optional parameters:
+    - source_lang: Source language code (default: "auto" for auto-detection by IndicTrans2)
+    - target_lang: Target language code for translation
+    - transliterate: If True, also provide romanized/transliterated version of the TRANSLATED text
+    """
+    if not OCR_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OCR service is not available. Please install pillow and pytesseract."
+        )
+    
+    try:
+        # Read and process image
+        image_content = await image.read()
+        img = Image.open(io.BytesIO(image_content))
+        
+        # Simple preprocessing - just convert to RGB to ensure compatibility
+        if img.mode not in ('RGB', 'L'):
+            img = img.convert('RGB')
+        
+        # Extract text using OCR with specified language
+        # Use simple configuration for better compatibility
+        extracted_text = pytesseract.image_to_string(img, lang=lang)
+        
+        if not extracted_text.strip():
+            return OCRExtractionResponse(
+                extracted_text="",
+                status="no_text_found"
+            )
+        
+        extracted_text = extracted_text.strip()
+        transliterated = None
+        translated = None
+        detected_source = source_lang
+        
+        # Translation if target language is provided
+        if target_lang and extracted_text:
+            try:
+                if INDIC_AVAILABLE:
+                    svc = IndicTransService.get()
+                    # IndicTrans2 handles auto-detection internally
+                    translated, src_tag, tgt_tag = svc.translate(
+                        extracted_text, source_lang, target_lang
+                    )
+                    detected_source = src_tag  # Use the detected source language
+                elif GOOGLETRANS_AVAILABLE:
+                    translator = Translator()
+                    if source_lang == "auto":
+                        translation = translator.translate(
+                            extracted_text,
+                            dest=_map_gtrans(target_lang)
+                        )
+                        detected_source = translation.src
+                    else:
+                        translation = translator.translate(
+                            extracted_text,
+                            src=_map_gtrans(source_lang),
+                            dest=_map_gtrans(target_lang)
+                        )
+                    translated = translation.text
+            except Exception as e:
+                print(f"Translation error: {e}")
+                # If translation fails, at least return the extracted text
+                translated = None
+        
+        # Transliteration (romanization) of the TRANSLATED text if requested
+        if transliterate and translated and target_lang:
+            try:
+                from indic_transliteration import sanscript as _sanscript
+                from indic_transliteration.sanscript import transliterate as _transliterate
+                
+                # Map language codes to sanscript schemes
+                scheme_map = {
+                    "ka": _sanscript.KANNADA,
+                    "hi": _sanscript.DEVANAGARI,
+                    "ta": _sanscript.TAMIL,
+                    "te": _sanscript.TELUGU,
+                    "ma": _sanscript.MALAYALAM,
+                    "be": _sanscript.BENGALI,
+                }
+                
+                if target_lang in scheme_map:
+                    # Use ISO 15919 for better romanization (more readable than ITRANS)
+                    transliterated = _transliterate(translated, scheme_map[target_lang], _sanscript.ISO)
+            except Exception as e:
+                print(f"Transliteration error: {e}")
+        
+        return OCRExtractionResponse(
+            extracted_text=extracted_text,
+            transliterated_text=transliterated,
+            translated_text=translated,
+            source_lang=detected_source,
             target_lang=target_lang,
             status="success"
         )
     except Exception as e:
-        # Clean up temporary file if it exists
-        try:
-            os.unlink(temp_audio_path)
-        except:
-            pass
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Voice translation failed: {str(e)}"
+            detail=f"Text extraction failed: {str(e)}"
         )
 
 @app.post("/api/translate/photo", response_model=PhotoTranslationResponse)
@@ -447,13 +643,23 @@ async def translate_photo_endpoint(
             )
         
         # Translate extracted text
-        translated_text, detected_lang = _deep_translate(
-            extracted_text, source_lang, target_lang
-        )
+        translator = Translator()
+        if source_lang == "auto":
+            translation = translator.translate(
+                extracted_text, dest=_map_gtrans(target_lang)
+            )
+            detected_lang = translation.src
+        else:
+            translation = translator.translate(
+                extracted_text,
+                src=_map_gtrans(source_lang),
+                dest=_map_gtrans(target_lang),
+            )
+            detected_lang = source_lang
         
         return PhotoTranslationResponse(
             extracted_text=extracted_text.strip(),
-            translated_text=translated_text,
+            translated_text=translation.text,
             source_lang=detected_lang,
             target_lang=target_lang,
             status="success"
@@ -490,7 +696,8 @@ async def server_info():
             "/api/info",
             "/api/translate/text",
             "/api/translate/voice",
-            "/api/translate/photo"
+            "/api/translate/photo",
+            "/api/ocr/extract"
         ]
     }
 

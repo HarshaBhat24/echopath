@@ -28,6 +28,21 @@ function PhotoTranslation() {
     { code: 'hi', name: 'Hindi' }
   ]
 
+  // Map UI language codes to Tesseract language codes
+  const mapToTesseractLang = (code) => {
+    const mapping = {
+      'auto': 'kan+eng', // Kannada is most common, fallback to English
+      'en': 'eng',
+      'ka': 'kan',
+      'ta': 'tam',
+      'te': 'tel',
+      'ma': 'mal',
+      'be': 'ben',
+      'hi': 'hin'
+    }
+    return mapping[code] || 'eng'
+  }
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
@@ -91,26 +106,47 @@ function PhotoTranslation() {
     try {
       const formData = new FormData()
       formData.append('image', selectedImage)
+      formData.append('lang', mapToTesseractLang(sourceLang))
+      
+      // Always send source (auto-detect) and target language for translation
       formData.append('source_lang', sourceLang)
       formData.append('target_lang', targetLang)
+      formData.append('transliterate', 'true')
 
-      // Replace this with your actual photo translation API call
-      const response = await fetch('http://localhost:8000/translate/photo', {
+      // Call the OCR extraction endpoint (no auth required)
+      const response = await fetch('http://localhost:8000/api/ocr/extract', {
         method: 'POST',
         body: formData
       })
 
       if (response.ok) {
         const data = await response.json()
+        
+        // Show extracted text (native script only)
         setExtractedText(data.extracted_text)
-        setTranslatedText(data.translated_text)
+        
+        // Show translated text with optional transliteration
+        if (data.translated_text) {
+          if (data.transliterated_text) {
+            // Show translated text + transliterated version
+            setTranslatedText(
+              `${data.translated_text}\n\nRomanized:\n${data.transliterated_text}`
+            )
+          } else {
+            // Just translated text
+            setTranslatedText(data.translated_text)
+          }
+        } else {
+          setTranslatedText('Translation not available.')
+        }
       } else {
-        throw new Error('Translation failed')
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Text extraction failed')
       }
     } catch (error) {
-      console.error('Translation error:', error)
-      setExtractedText('Text extraction failed. Please try again.')
-      setTranslatedText('Translation failed. Please try again.')
+      console.error('Text extraction error:', error)
+      setExtractedText(`Error: ${error.message}`)
+      setTranslatedText('')
     } finally {
       setIsProcessing(false)
     }

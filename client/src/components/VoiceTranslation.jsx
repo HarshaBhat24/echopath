@@ -11,7 +11,7 @@ function VoiceTranslation() {
   const [transcribedText, setTranscribedText] = useState('')
   const [translatedText, setTranslatedText] = useState('')
   const [sourceLang, setSourceLang] = useState('auto')
-  const [targetLang, setTargetLang] = useState('es')
+  const [targetLang, setTargetLang] = useState('ka')
   const [isProcessing, setIsProcessing] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const mediaRecorderRef = useRef(null)
@@ -97,12 +97,32 @@ function VoiceTranslation() {
     try {
       const formData = new FormData()
       formData.append('audio', audioBlob, 'recording.wav')
-      formData.append('source_lang', sourceLang)
-      formData.append('target_lang', targetLang)
+  formData.append('source_lang', sourceLang)
+  formData.append('target_lang', targetLang)
 
-      // Replace this with your actual voice translation API call
-      const response = await fetch('http://localhost:8000/translate/voice', {
+      // Ensure we have an API token before calling protected endpoint
+      let token = localStorage.getItem('api_token')
+      if (!token && auth?.currentUser) {
+        try {
+          const idToken = await auth.currentUser.getIdToken()
+          const resp = await fetch('http://localhost:8000/api/auth/firebase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ firebase_token: idToken })
+          })
+          if (resp.ok) {
+            const data = await resp.json()
+            token = data?.access_token
+            if (token) localStorage.setItem('api_token', token)
+          }
+        } catch (e) {
+          console.error('API auth exchange failed:', e)
+        }
+      }
+
+      const response = await fetch('http://localhost:8000/api/translate/voice', {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: formData
       })
 
@@ -110,6 +130,10 @@ function VoiceTranslation() {
         const data = await response.json()
         setTranscribedText(data.transcribed_text)
         setTranslatedText(data.translated_text)
+        // Optionally display romanized text below translation
+        if (data.romanized_text) {
+          setTranslatedText(`${data.translated_text} \n(${data.romanized_text})`)
+        }
       } else {
         throw new Error('Translation failed')
       }
