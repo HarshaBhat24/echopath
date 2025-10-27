@@ -164,3 +164,6 @@ ui-debug.log
 .env.backup
 
 FIREBASE_SETUP.md
+
+
+*.github/

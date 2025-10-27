@@ -73,7 +73,7 @@ function SimpleDashboard() {
       <div className="page-inner container mx-auto min-h-screen flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
-          <h1 className="section-title">🎉 EchoPath</h1>
+          <h1 className="section-title">EchoPath</h1>
           <div className="relative" ref={profileRef}>
             <button
               onClick={() => setShowProfile(!showProfile)}

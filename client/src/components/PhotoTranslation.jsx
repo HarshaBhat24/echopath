@@ -11,27 +11,27 @@ function PhotoTranslation() {
   const [extractedText, setExtractedText] = useState('')
   const [translatedText, setTranslatedText] = useState('')
   const [sourceLang, setSourceLang] = useState('auto')
-  const [targetLang, setTargetLang] = useState('es')
+  const [targetLang, setTargetLang] = useState('en')
   const [isProcessing, setIsProcessing] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef(null)
   const navigate = useNavigate()
 
   const languages = [
-    { code: 'auto', name: 'Auto Detect' },
-    { code: 'en', name: 'English' },
-    { code: 'ka', name: 'Kannada' },
-    { code: 'ta', name: 'Tamil' },
-    { code: 'te', name: 'Telugu' },
-    { code: 'ma', name: 'Malayalam' },
-    { code: 'be', name: 'Bengali' },
-    { code: 'hi', name: 'Hindi' }
+    { code: 'auto', name: '🔍 Auto Detect', flag: '🌐' },
+    { code: 'en', name: 'English', flag: '🇺🇸' },
+    { code: 'hi', name: 'हिंदी (Hindi)', flag: '🇮🇳' },
+    { code: 'ka', name: 'ಕನ್ನಡ (Kannada)', flag: '🇮🇳' },
+    { code: 'ta', name: 'தமிழ் (Tamil)', flag: '🇮🇳' },
+    { code: 'te', name: 'తెలుగు (Telugu)', flag: '🇮🇳' },
+    { code: 'ma', name: 'മലയാളം (Malayalam)', flag: '🇮🇳' },
+    { code: 'be', name: 'বাংলা (Bengali)', flag: '🇮🇳' }
   ]
 
   // Map UI language codes to Tesseract language codes
   const mapToTesseractLang = (code) => {
     const mapping = {
-      'auto': 'kan+eng', // Kannada is most common, fallback to English
+      'auto': 'hin+kan+tam+tel+eng', // Try multiple Indian languages for auto-detect
       'en': 'eng',
       'ka': 'kan',
       'ta': 'tam',
@@ -41,6 +41,10 @@ function PhotoTranslation() {
       'hi': 'hin'
     }
     return mapping[code] || 'eng'
+  }
+
+  const getLanguageByCode = (code) => {
+    return languages.find(lang => lang.code === code) || { name: 'Unknown', flag: '❓' }
   }
 
   useEffect(() => {
@@ -200,10 +204,15 @@ function PhotoTranslation() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-violet-900 via-purple-900 to-indigo-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <div className="relative">
+            <div className="animate-spin rounded-full h-32 w-32 border-t-4 border-b-4 border-purple-400 mx-auto mb-4"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-4xl">📷</span>
+            </div>
+          </div>
+          <p className="text-white text-lg font-medium">Loading EchoPath...</p>
         </div>
       </div>
     )
@@ -215,91 +224,137 @@ function PhotoTranslation() {
 
   return (
     <div className="page-container page-bg">
-      <div className="page-inner container mx-auto">
+      {/* Enhanced Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-20 w-72 h-72 bg-gradient-to-r from-pink-300 to-purple-400 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-pulse"></div>
+        <div className="absolute top-40 right-20 w-96 h-96 bg-gradient-to-r from-purple-400 to-indigo-500 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-pulse animation-delay-2000"></div>
+        <div className="absolute bottom-20 left-1/3 w-80 h-80 bg-gradient-to-r from-indigo-400 to-cyan-400 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-pulse animation-delay-4000"></div>
+        <div className="absolute bottom-40 right-1/3 w-64 h-64 bg-gradient-to-r from-pink-500 to-rose-400 rounded-full mix-blend-multiply filter blur-2xl opacity-25 animate-pulse animation-delay-1000"></div>
+        
+        {/* Floating particles */}
+        <div className="absolute inset-0">
+          {[...Array(20)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute w-2 h-2 bg-white rounded-full opacity-20 animate-pulse"
+              style={{
+                left: `${Math.random() * 100}%`,
+                top: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 5}s`,
+                animationDuration: `${3 + Math.random() * 2}s`
+              }}
+            ></div>
+          ))}
+        </div>
+      </div>
+
+      <div className="page-inner overflow-x-hidden pointer-events-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center">
+        <div className="flex items-center justify-between mb-12 max-w-7xl mx-auto">
+          <div className="flex items-center space-x-6">
             <button
               onClick={() => navigate('/dashboard')}
-              className="mr-4 p-2 rounded-lg bg-white shadow-md hover:shadow-lg transition-shadow"
+              className="group flex items-center space-x-3 px-6 py-3 bg-white/15 backdrop-blur-xl rounded-2xl border border-white/25 text-white hover:bg-white/25 transition-all duration-500 shadow-2xl hover:shadow-blue-500/25"
             >
-              ← Back
+              <svg className="w-6 h-6 group-hover:translate-x-[-8px] transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span className="font-semibold text-lg">Back to Dashboard</span>
             </button>
-            <h1 className="text-3xl font-bold text-gray-900">📷 Photo Translation</h1>
+            <div className="text-white">
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-300 to-indigo-300 bg-clip-text text-transparent flex items-center space-x-3">
+                <span className="text-5xl">📷</span>
+                <span>Photo Translation</span>
+              </h1>
+              <p className="text-white/80 mt-2 text-lg">Extract and translate text from images instantly</p>
+            </div>
           </div>
         </div>
 
         {/* Translation Interface */}
-        <div className="max-w-6xl mx-auto">
-          {/* Language Selection */}
-          <div className="card p-6 mb-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Language Selection Card */}
+          <div className="card p-6 mb-10 transition-all duration-500">
             <div className="flex items-center justify-center space-x-8">
-              <div className="flex flex-col">
-                <label className="text-sm font-medium text-gray-700 mb-2">From</label>
-                <select
-                  value={sourceLang}
-                  onChange={(e) => setSourceLang(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  {languages.map((lang) => (
-                    <option key={lang.code} value={lang.code}>
-                      {lang.name}
-                    </option>
-                  ))}
-                </select>
+              {/* Source Language */}
+              <div className="flex flex-col space-y-4">
+                <label className="text-white text-lg font-bold uppercase tracking-wider drop-shadow-lg">From Language</label>
+                <div className="relative group">
+                  <select
+                    value={sourceLang}
+                    onChange={(e) => setSourceLang(e.target.value)}
+                    className="appearance-none bg-gradient-to-r from-white/20 to-white/10 backdrop-blur-xl border border-white/30 rounded-2xl px-6 py-4 text-white font-semibold focus:outline-none focus:ring-4 focus:ring-pink-400/50 focus:border-transparent cursor-pointer min-w-[250px] text-lg hover:bg-white/25 transition-all duration-300 shadow-xl"
+                  >
+                    {languages.map((lang) => (
+                      <option key={lang.code} value={lang.code} className="bg-gray-900 text-white py-2">
+                        {lang.flag} {lang.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               
-              <div className="flex flex-col">
-                <label className="text-sm font-medium text-gray-700 mb-2">To</label>
-                <select
-                  value={targetLang}
-                  onChange={(e) => setTargetLang(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  {languages.filter(lang => lang.code !== 'auto').map((lang) => (
-                    <option key={lang.code} value={lang.code}>
-                      {lang.name}
-                    </option>
-                  ))}
-                </select>
+              {/* Arrow Icon */}
+              <div className="mt-10 p-4 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-500 rounded-2xl text-white shadow-2xl">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </div>
+              
+              {/* Target Language */}
+              <div className="flex flex-col space-y-4">
+                <label className="text-white text-lg font-bold uppercase tracking-wider drop-shadow-lg">To Language</label>
+                <div className="relative group">
+                  <select
+                    value={targetLang}
+                    onChange={(e) => setTargetLang(e.target.value)}
+                    className="appearance-none bg-gradient-to-r from-white/20 to-white/10 backdrop-blur-xl border border-white/30 rounded-2xl px-6 py-4 text-white font-semibold focus:outline-none focus:ring-4 focus:ring-purple-400/50 focus:border-transparent cursor-pointer min-w-[250px] text-lg hover:bg-white/25 transition-all duration-300 shadow-xl"
+                  >
+                    {languages.filter(lang => lang.code !== 'auto').map((lang) => (
+                      <option key={lang.code} value={lang.code} className="bg-gray-900 text-white py-2">
+                        {lang.flag} {lang.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Image Upload/Capture Interface */}
-          <div className="card p-6 mb-6">
+          <div className="card p-8 mb-10 shadow-2xl hover:shadow-blue-500/25 transition-all duration-500">
             {!imagePreview ? (
               <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                className={`border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300 ${
                   dragActive 
-                    ? 'border-purple-500 bg-purple-50' 
-                    : 'border-gray-300 hover:border-purple-400'
+                    ? 'border-purple-400 bg-white/20' 
+                    : 'border-white/30 hover:border-purple-400/50 hover:bg-white/10'
                 }`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
               >
-                <div className="text-6xl mb-4">📷</div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">
+                <div className="text-8xl mb-6 opacity-70">📷</div>
+                <h3 className="text-2xl font-bold text-white mb-3 drop-shadow-lg">
                   Upload or Capture Image
                 </h3>
-                <p className="text-gray-600 mb-6">
+                <p className="text-white/70 mb-8 text-lg">
                   Drag and drop an image here, or click to select a file
                 </p>
                 
                 <div className="flex justify-center space-x-4">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    className="px-10 py-4 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-2xl hover:from-violet-700 hover:to-purple-700 transition-all duration-300 shadow-2xl hover:shadow-purple-500/50 font-semibold text-lg"
                   >
-                    Choose File
+                    📁 Choose File
                   </button>
                   <button
                     onClick={takePhoto}
-                    className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    className="px-10 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-2xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-2xl hover:shadow-green-500/50 font-semibold text-lg"
                   >
-                    Take Photo
+                    📸 Take Photo
                   </button>
                 </div>
                 
@@ -313,27 +368,34 @@ function PhotoTranslation() {
               </div>
             ) : (
               <div className="text-center">
-                <div className="mb-4">
+                <div className="mb-6">
                   <img
                     src={imagePreview}
                     alt="Selected"
-                    className="max-w-full max-h-96 mx-auto rounded-lg shadow-lg"
+                    className="max-w-full max-h-96 mx-auto rounded-2xl shadow-2xl border-2 border-white/20"
                   />
                 </div>
                 
                 <div className="flex justify-center space-x-4">
                   <button
                     onClick={clearImage}
-                    className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                    className="px-8 py-4 bg-white/15 backdrop-blur-xl text-white rounded-2xl hover:bg-white/25 transition-all duration-300 shadow-xl font-semibold text-lg border border-white/20"
                   >
-                    Clear Image
+                    🗑️ Clear Image
                   </button>
                   <button
                     onClick={handleTranslate}
                     disabled={isProcessing}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="px-10 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-2xl hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-2xl hover:shadow-blue-500/50 font-semibold text-lg"
                   >
-                    {isProcessing ? 'Processing...' : 'Extract & Translate'}
+                    {isProcessing ? (
+                      <div className="flex items-center space-x-3">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                        <span>Processing Magic...</span>
+                      </div>
+                    ) : (
+                      '✨ Extract & Translate'
+                    )}
                   </button>
                 </div>
               </div>
@@ -342,38 +404,67 @@ function PhotoTranslation() {
 
           {/* Results */}
           {(extractedText || translatedText) && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               {/* Extracted Text */}
-              <div className="card p-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Extracted Text</h3>
-                <div className="p-4 border border-gray-300 rounded-lg bg-gray-50 min-h-32 max-h-64 overflow-y-auto">
-                  {extractedText ? (
-                    <p className="text-gray-800 whitespace-pre-wrap">{extractedText}</p>
-                  ) : (
-                    <p className="text-gray-500 italic">Extracted text will appear here...</p>
-                  )}
+              <div className="group card shadow-2xl hover:shadow-blue-500/25 transition-all duration-500 overflow-hidden">
+                <div className="flex justify-between items-center p-6 border-b border-white/20 bg-gradient-to-r from-white/10 to-transparent">
+                  <div className="flex items-center space-x-4">
+                    <span className="text-4xl drop-shadow-lg">{getLanguageByCode(sourceLang).flag}</span>
+                    <h3 className="text-2xl font-bold text-white drop-shadow-lg">
+                      {getLanguageByCode(sourceLang).name}
+                    </h3>
+                  </div>
+                </div>
+                <div className="p-6">
+                  <div className="w-full min-h-48 max-h-64 overflow-y-auto">
+                    {extractedText ? (
+                      <p className="text-white text-xl leading-relaxed whitespace-pre-wrap break-words w-full font-medium">
+                        {extractedText}
+                      </p>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center w-full h-48 text-white/70">
+                        <div className="text-6xl mb-4 opacity-50">📄</div>
+                        <p className="text-center text-lg font-semibold">Extracted text will appear here!</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {/* Translation */}
-              <div className="card p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold text-gray-800">Translation</h3>
+              <div className="group card shadow-2xl hover:shadow-blue-500/25 transition-all duration-500 overflow-hidden">
+                <div className="flex justify-between items-center p-6 border-b border-white/20 bg-gradient-to-r from-white/10 to-transparent">
+                  <div className="flex items-center space-x-4">
+                    <span className="text-4xl drop-shadow-lg">{getLanguageByCode(targetLang).flag}</span>
+                    <h3 className="text-2xl font-bold text-white drop-shadow-lg">
+                      {getLanguageByCode(targetLang).name}
+                    </h3>
+                  </div>
                   {translatedText && (
                     <button
                       onClick={() => navigator.clipboard.writeText(translatedText)}
-                      className="text-sm text-purple-600 hover:text-purple-700"
+                      className="text-white/70 hover:text-white transition-all duration-300 p-3 rounded-xl hover:bg-white/20 shadow-lg"
+                      title="Copy translation"
                     >
-                      Copy
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
                     </button>
                   )}
                 </div>
-                <div className="p-4 border border-gray-300 rounded-lg bg-gray-50 min-h-32 max-h-64 overflow-y-auto">
-                  {translatedText ? (
-                    <p className="text-gray-800 whitespace-pre-wrap">{translatedText}</p>
-                  ) : (
-                    <p className="text-gray-500 italic">Translation will appear here...</p>
-                  )}
+                <div className="p-6">
+                  <div className="w-full min-h-48 max-h-64 overflow-y-auto">
+                    {translatedText ? (
+                      <p className="text-white text-xl leading-relaxed whitespace-pre-wrap break-words w-full font-medium">
+                        {translatedText}
+                      </p>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center w-full h-48 text-white/70">
+                        <div className="text-6xl mb-4 opacity-50">🌟</div>
+                        <p className="text-center text-lg font-semibold">Translation will appear here!</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

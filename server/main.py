@@ -131,6 +131,7 @@ class TextTranslationRequest(BaseModel):
 class TranslationResponse(BaseModel):
     original_text: str
     translated_text: str
+    romanized_text: str | None = None
     source_lang: str
     target_lang: str
     status: str
@@ -257,8 +258,16 @@ async def echo_message(request: EchoRequest, current_user: User = Depends(get_cu
 # Translation endpoints
 @app.post("/api/translate/text", response_model=TranslationResponse)
 async def translate_text_endpoint(request: TextTranslationRequest, current_user: User = Depends(get_current_user)):
-    """Translate text to the target language"""
+    """Translate text to the target language with optional romanization"""
     print(f"Translation request - text: '{request.text}', source: {request.source_lang}, target: {request.target_lang}")
+    
+    # Check for transliteration support
+    try:
+        from indic_transliteration import sanscript as _sanscript
+        from indic_transliteration.sanscript import transliterate as _transliterate
+        HAVE_ROM = True
+    except Exception:
+        HAVE_ROM = False
     
     # Prefer IndicTrans2 if available, else fallback to googletrans
     if INDIC_AVAILABLE:
@@ -267,9 +276,30 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
             translated, src_tag, tgt_tag = svc.translate(
                 request.text, request.source_lang, request.target_lang
             )
+            
+            # Romanize for Indic languages
+            romanized = None
+            if HAVE_ROM:
+                try:
+                    tag_to_scheme = {
+                        "hin_Deva": _sanscript.DEVANAGARI,
+                        "kan_Knda": _sanscript.KANNADA,
+                        "tam_Taml": _sanscript.TAMIL,
+                        "tel_Telu": _sanscript.TELUGU,
+                        "mal_Mlym": _sanscript.MALAYALAM,
+                        "ben_Beng": _sanscript.BENGALI,
+                    }
+                    scheme = tag_to_scheme.get(tgt_tag)
+                    if scheme:
+                        romanized = _transliterate(translated, scheme, _sanscript.IAST)
+                except Exception as rom_err:
+                    print(f"Romanization error: {rom_err}")
+                    romanized = None
+            
             return TranslationResponse(
                 original_text=request.text,
                 translated_text=translated,
+                romanized_text=romanized,
                 source_lang=src_tag,
                 target_lang=tgt_tag,
                 status="success"
@@ -295,6 +325,7 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
                     return TranslationResponse(
                         original_text=request.text,
                         translated_text=translation.text,
+                        romanized_text=None,  # googletrans fallback doesn't support romanization
                         source_lang=detected_lang,
                         target_lang=request.target_lang,
                         status="success(fallback)"
@@ -323,6 +354,7 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
                     return TranslationResponse(
                         original_text=request.text,
                         translated_text=translation.text,
+                        romanized_text=None,  # googletrans fallback doesn't support romanization
                         source_lang=detected_lang,
                         target_lang=request.target_lang,
                         status="success(fallback)"
@@ -357,6 +389,7 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
             return TranslationResponse(
                 original_text=request.text,
                 translated_text=translation.text,
+                romanized_text=None,  # googletrans doesn't support romanization
                 source_lang=detected_lang,
                 target_lang=request.target_lang,
                 status="success"
@@ -512,6 +545,12 @@ async def extract_text_from_image(
     - target_lang: Target language code for translation
     - transliterate: If True, also provide romanized/transliterated version of the TRANSLATED text
     """
+    import sys
+    print("=" * 80, flush=True)
+    print(f"[OCR ENDPOINT CALLED] lang={lang}, source={source_lang}, target={target_lang}, transliterate={transliterate}", flush=True)
+    print("=" * 80, flush=True)
+    sys.stdout.flush()
+    
     if not OCR_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -521,17 +560,69 @@ async def extract_text_from_image(
     try:
         # Read and process image
         image_content = await image.read()
-        img = Image.open(io.BytesIO(image_content))
+        print(f"[OCR] Image size: {len(image_content)} bytes", flush=True)
         
-        # Simple preprocessing - just convert to RGB to ensure compatibility
-        if img.mode not in ('RGB', 'L'):
-            img = img.convert('RGB')
+        img = Image.open(io.BytesIO(image_content))
+        print(f"[OCR] Image mode: {img.mode}, size: {img.size}", flush=True)
+        
+        # Preprocessing for better OCR
+        from PIL import ImageEnhance, ImageFilter
+        
+        # Convert to grayscale for better OCR
+        if img.mode != 'L':
+            img = img.convert('L')
+            print(f"[OCR] Converted to grayscale", flush=True)
+        
+        # Upscale if image is small (improves OCR accuracy)
+        width, height = img.size
+        if width < 1000 or height < 300:
+            scale_factor = 3
+            new_size = (width * scale_factor, height * scale_factor)
+            img = img.resize(new_size, Image.LANCZOS)
+            print(f"[OCR] Upscaled image to {img.size}", flush=True)
+        
+        # Apply slight sharpening
+        img = img.filter(ImageFilter.SHARPEN)
+        
+        # Enhance contrast
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.5)
+        print(f"[OCR] Applied sharpening and contrast enhancement", flush=True)
         
         # Extract text using OCR with specified language
-        # Use simple configuration for better compatibility
-        extracted_text = pytesseract.image_to_string(img, lang=lang)
+        # Try with different PSM modes for better results
+        print(f"[OCR] Calling pytesseract with lang={lang}", flush=True)
+        
+        # Try PSM 6 first (uniform block of text)
+        custom_config = r'--oem 3 --psm 6'
+        extracted_text = pytesseract.image_to_string(img, lang=lang, config=custom_config)
+        
+        # If empty, try PSM 3 (fully automatic)
+        if not extracted_text.strip():
+            print(f"[OCR] PSM 6 failed, trying PSM 3", flush=True)
+            custom_config = r'--oem 3 --psm 3'
+            extracted_text = pytesseract.image_to_string(img, lang=lang, config=custom_config)
+        
+        # If still empty, try PSM 11 (sparse text)
+        if not extracted_text.strip():
+            print(f"[OCR] PSM 3 failed, trying PSM 11", flush=True)
+            custom_config = r'--oem 3 --psm 11'
+            extracted_text = pytesseract.image_to_string(img, lang=lang, config=custom_config)
+        
+        # If still empty, try with binary threshold (convert to pure black & white)
+        if not extracted_text.strip():
+            print(f"[OCR] PSM 11 failed, trying with binary threshold", flush=True)
+            # Convert to binary (black and white only)
+            threshold = 128
+            img_binary = img.point(lambda p: p > threshold and 255)
+            custom_config = r'--oem 3 --psm 6'
+            extracted_text = pytesseract.image_to_string(img_binary, lang=lang, config=custom_config)
+        
+        print(f"[OCR] Pytesseract returned: '{extracted_text[:200]}'", flush=True)
+        print(f"[OCR] Text length: {len(extracted_text)}, stripped length: {len(extracted_text.strip())}", flush=True)
         
         if not extracted_text.strip():
+            print(f"[OCR] No text found in image!", flush=True)
             return OCRExtractionResponse(
                 extracted_text="",
                 status="no_text_found"
@@ -541,17 +632,39 @@ async def extract_text_from_image(
         transliterated = None
         translated = None
         detected_source = source_lang
+        final_target_lang = target_lang
+        
+        print(f"[OCR] Extracted text: {extracted_text[:100]}...", flush=True)
+        print(f"[OCR] Source lang: {source_lang}, Target lang: {target_lang}", flush=True)
+        
+        # Helper to convert IndicTrans2 tags back to short codes
+        def tag_to_short_code(tag: str) -> str:
+            tag_to_code = {
+                "eng_Latn": "en",
+                "hin_Deva": "hi",
+                "kan_Knda": "ka",
+                "tam_Taml": "ta",
+                "tel_Telu": "te",
+                "mal_Mlym": "ma",
+                "ben_Beng": "be",
+            }
+            return tag_to_code.get(tag, tag)
         
         # Translation if target language is provided
         if target_lang and extracted_text:
             try:
                 if INDIC_AVAILABLE:
+                    print(f"[OCR] Using IndicTrans2 for translation", flush=True)
                     svc = IndicTransService.get()
                     # IndicTrans2 handles auto-detection internally
                     translated, src_tag, tgt_tag = svc.translate(
                         extracted_text, source_lang, target_lang
                     )
-                    detected_source = src_tag  # Use the detected source language
+                    # Convert tags back to short codes for consistency
+                    detected_source = tag_to_short_code(src_tag)
+                    final_target_lang = tag_to_short_code(tgt_tag)
+                    print(f"[OCR] Translation successful: {src_tag} ({detected_source}) -> {tgt_tag} ({final_target_lang})", flush=True)
+                    print(f"[OCR] Translated text: {translated[:100] if translated else 'None'}...", flush=True)
                 elif GOOGLETRANS_AVAILABLE:
                     translator = Translator()
                     if source_lang == "auto":
@@ -568,15 +681,19 @@ async def extract_text_from_image(
                         )
                     translated = translation.text
             except Exception as e:
-                print(f"Translation error: {e}")
+                print(f"Translation error: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
                 # If translation fails, at least return the extracted text
                 translated = None
         
         # Transliteration (romanization) of the TRANSLATED text if requested
-        if transliterate and translated and target_lang:
+        if transliterate and translated and final_target_lang:
             try:
                 from indic_transliteration import sanscript as _sanscript
                 from indic_transliteration.sanscript import transliterate as _transliterate
+                
+                print(f"[OCR] Attempting transliteration for target lang: {final_target_lang}", flush=True)
                 
                 # Map language codes to sanscript schemes
                 scheme_map = {
@@ -588,18 +705,23 @@ async def extract_text_from_image(
                     "be": _sanscript.BENGALI,
                 }
                 
-                if target_lang in scheme_map:
+                if final_target_lang in scheme_map:
                     # Use ISO 15919 for better romanization (more readable than ITRANS)
-                    transliterated = _transliterate(translated, scheme_map[target_lang], _sanscript.ISO)
+                    transliterated = _transliterate(translated, scheme_map[final_target_lang], _sanscript.ISO)
+                    print(f"[OCR] Transliteration successful: {transliterated[:100] if transliterated else 'None'}...", flush=True)
+                else:
+                    print(f"[OCR] Target language {final_target_lang} not in scheme_map (no transliteration needed)", flush=True)
             except Exception as e:
-                print(f"Transliteration error: {e}")
+                print(f"Transliteration error: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
         
         return OCRExtractionResponse(
             extracted_text=extracted_text,
             transliterated_text=transliterated,
             translated_text=translated,
             source_lang=detected_source,
-            target_lang=target_lang,
+            target_lang=final_target_lang,
             status="success"
         )
     except Exception as e:

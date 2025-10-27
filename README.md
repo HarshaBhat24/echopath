@@ -1,29 +1,6 @@
 # EchoPath
 
-A full-stack web application with a React + Vite frontend and FastAPI backend.
-
-## Project Structure
-
-```
-echopath/
-├── client/          # React + Vite frontend
-│   ├── src/
-│   ├── package.json
-│   └── ...
-├── server/          # FastAPI backend
-│   ├── main.py
-│   ├── requirements.txt
-│   └── ...
-└── README.md
-```
-
-## Features
-
-- **Frontend**: React 19 with Vite, Tailwind CSS for styling
-- **Backend**: FastAPI with automatic API documentation
-- **Communication**: RESTful API with JSON
-- **Styling**: Modern UI with Tailwind CSS and dark mode support
-- **Development**: Hot reload for both frontend and backend
+A full-stack web application for the translation of any text of indian languages.
 
 ## Getting Started
 
@@ -72,15 +49,8 @@ npm install
 npm run dev
 ```
 
-The React app will be available at `http://localhost:5174` (or another port if 5173 is in use)
+The React app will be available at `http://localhost:5173` (or another port if 5173 is in use)
 
-## API Endpoints
-
-- `GET /` - Root endpoint
-- `GET /api/health` - Health check
-- `POST /api/echo` - Echo message endpoint
-- `GET /api/info` - Server information
-- `GET /docs` - FastAPI automatic documentation (Swagger UI)
 
 ## Development
 
@@ -105,26 +75,6 @@ cd client && npm run dev
 cd client
 npm run build
 ```
-
-#### Backend
-The FastAPI server is production-ready. For deployment, consider using:
-- Gunicorn with Uvicorn workers
-- Docker containers
-- Cloud platforms (AWS, GCP, Azure)
-
-## Technologies Used
-
-### Frontend
-- React 19
-- Vite
-- Tailwind CSS
-- Axios for HTTP requests
-
-### Backend
-- FastAPI
-- Uvicorn (ASGI server)
-- Pydantic for data validation
-- Python CORS middleware
 
 ## License
 

@@ -9,6 +9,7 @@ function TextTranslation() {
   const [loading, setLoading] = useState(true)
   const [inputText, setInputText] = useState('')
   const [translatedText, setTranslatedText] = useState('')
+  const [romanizedText, setRomanizedText] = useState('')
   const [sourceLang, setSourceLang] = useState('auto')
   const [targetLang, setTargetLang] = useState('hi')
   const [isTranslating, setIsTranslating] = useState(false)
@@ -75,11 +76,13 @@ function TextTranslation() {
         token2 ? { headers: { Authorization: `Bearer ${token2}` } } : undefined
       )
       setTranslatedText(data.translated_text)
+      setRomanizedText(data.romanized_text || '')
       setTimeout(() => setAnimateTranslation(false), 1000)
     } catch (error) {
       console.error('Translation error:', error)
       const detail = error?.response?.data?.detail
       setTranslatedText(detail ? `Translation failed: ${detail}` : 'Translation failed. Please try again.')
+      setRomanizedText('')
       setAnimateTranslation(false)
     } finally {
       setIsTranslating(false)
@@ -89,6 +92,7 @@ function TextTranslation() {
   const clearText = () => {
     setInputText('')
     setTranslatedText('')
+    setRomanizedText('')
     setAnimateTranslation(false)
   }
 
@@ -306,11 +310,25 @@ function TextTranslation() {
                 )}
               </div>
               <div className="p-6">
-                <div className="w-full h-60 flex items-start">
+                <div className="w-full h-60 flex items-start overflow-y-auto">
                   {translatedText ? (
-                    <p className="text-white text-xl leading-relaxed whitespace-pre-wrap break-words w-full font-medium">
-                      {translatedText}
-                    </p>
+                    <div className="w-full space-y-4">
+                      <div>
+                        <p className="text-white text-xl leading-relaxed whitespace-pre-wrap break-words w-full font-medium">
+                          {translatedText}
+                        </p>
+                      </div>
+                      {romanizedText && (
+                        <div className="pt-4 border-t border-white/20">
+                          <p className="text-white/60 text-sm font-semibold mb-2 uppercase tracking-wider">
+                            Romanized (IAST):
+                          </p>
+                          <p className="text-purple-200 text-lg leading-relaxed whitespace-pre-wrap break-words w-full font-medium italic">
+                            {romanizedText}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center w-full h-full text-white/70">
                       <div className="text-8xl mb-6 opacity-50 animate-pulse">🌟</div>
