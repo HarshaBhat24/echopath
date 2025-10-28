@@ -4,6 +4,8 @@ openai-whisper>=20231117
 # Transliteration for Romanized display in voice translation
 indic-transliteration>=2.3.63
 
+# Text-to-Speech for audio playback (Google TTS - better quality)
+gTTS>=2.5.0
 
 annotated-types==0.7.0
 anyio==4.10.0

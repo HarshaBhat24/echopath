@@ -21,12 +21,17 @@ except ImportError:
 
 # Whisper model cache
 _WHISPER_MODEL = None
+_WHISPER_MODEL_NAME = "small.en"  # Upgraded for better accuracy (base.en < small.en < medium.en)
 
-def _get_whisper_model(name: str = "base.en"):
-    global _WHISPER_MODEL
-    if _WHISPER_MODEL is None:
+def _get_whisper_model(name: str = None):
+    global _WHISPER_MODEL, _WHISPER_MODEL_NAME
+    if name is None:
+        name = _WHISPER_MODEL_NAME
+    if _WHISPER_MODEL is None or name != _WHISPER_MODEL_NAME:
         import whisper  # type: ignore
+        print(f"Loading Whisper model: {name}")
         _WHISPER_MODEL = whisper.load_model(name)
+        _WHISPER_MODEL_NAME = name
     return _WHISPER_MODEL
 
 # Import our authentication modules
@@ -81,6 +86,14 @@ try:
 except ImportError:
     OCR_AVAILABLE = False
     print("Warning: OCR not available. Install with: pip install pillow pytesseract")
+
+# Check TTS availability (using gTTS for better quality)
+TTS_AVAILABLE = False
+try:
+    from gtts import gTTS as _gTTS
+    TTS_AVAILABLE = True
+except ImportError:
+    print("Warning: gTTS not available. Install with: pip install gTTS")
 
 # Preload models at startup for lower first-latency if available
 @asynccontextmanager
@@ -167,6 +180,13 @@ class OCRExtractionResponse(BaseModel):
     source_lang: str | None = None
     target_lang: str | None = None
     status: str
+
+class TTSRequest(BaseModel):
+    text: str
+    lang: str = "en"  # Language code (en, hi, ka, ta, te, ma, be)
+
+# OAuth2 scheme for JWT tokens
+
 
 @app.get("/")
 async def root():
@@ -286,9 +306,9 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
                 request.text, request.source_lang, request.target_lang
             )
             
-            # Romanize for Indic languages
+            # Romanize for Indic languages (only if target is not English)
             romanized = None
-            if HAVE_ROM:
+            if HAVE_ROM and tgt_tag != "eng_Latn":
                 try:
                     tag_to_scheme = {
                         "hin_Deva": _sanscript.DEVANAGARI,
@@ -458,16 +478,31 @@ async def translate_voice_endpoint(
             temp_audio.write(content)
             temp_audio_path = temp_audio.name
 
-        # 1) STT
+        # 1) STT with improved Whisper parameters
         if whisper_available:
             try:
-                model = _get_whisper_model("base.en")
+                model = _get_whisper_model()  # Uses small.en for better accuracy
                 try:
                     import torch as _torch  # type: ignore
                     use_fp16 = _torch.cuda.is_available()
                 except Exception:
                     use_fp16 = False
-                result = model.transcribe(temp_audio_path, language="en", task="transcribe", fp16=use_fp16)
+                
+                # Improved transcription parameters for better accuracy
+                result = model.transcribe(
+                    temp_audio_path,
+                    language="en",
+                    task="transcribe",
+                    fp16=use_fp16,
+                    temperature=0.0,  # More deterministic output
+                    best_of=5,        # Try multiple decodings, pick best
+                    beam_size=5,      # Beam search for better results
+                    patience=1.0,     # Wait longer for better results
+                    condition_on_previous_text=True,  # Use context
+                    compression_ratio_threshold=2.4,
+                    logprob_threshold=-1.0,
+                    no_speech_threshold=0.6
+                )
                 transcribed_text = (result.get("text") or "").strip()
             except Exception as we:
                 raise HTTPException(status_code=500, detail=f"Whisper failed: {we}")
@@ -497,8 +532,8 @@ async def translate_voice_endpoint(
         except Exception as te:
             raise HTTPException(status_code=500, detail=f"Translation failed: {te}")
 
-        # 3) Romanize for display (optional)
-        if HAVE_ROM:
+        # 3) Romanize for display (only for Indic target languages, not English)
+        if HAVE_ROM and tgt_tag != "eng_Latn":
             try:
                 tag_to_scheme = {
                     "hin_Deva": _sanscript.DEVANAGARI,
@@ -521,6 +556,85 @@ async def translate_voice_endpoint(
             source_lang=src_tag,
             target_lang=tgt_tag,
             status="success"
+        )
+    finally:
+        if temp_audio_path and os.path.exists(temp_audio_path):
+            try:
+                os.unlink(temp_audio_path)
+            except Exception:
+                pass
+
+@app.post("/api/tts/synthesize")
+async def text_to_speech(
+    request: TTSRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Convert text to speech using Google Text-to-Speech (gTTS).
+    
+    Provides high-quality, natural-sounding voices for Indian languages:
+    - en: English
+    - hi: Hindi
+    - ka: Kannada (kn)
+    - ta: Tamil
+    - te: Telugu
+    - ma: Malayalam (ml)
+    - be: Bengali (bn)
+    
+    Returns audio file as base64 encoded MP3 data.
+    """
+    if not TTS_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Text-to-speech not available. Install gTTS."
+        )
+    
+    # Map our language codes to gTTS language codes
+    lang_to_gtts = {
+        "en": "en",
+        "hi": "hi",
+        "ka": "kn",  # Kannada
+        "ta": "ta",
+        "te": "te",
+        "ma": "ml",  # Malayalam
+        "be": "bn"   # Bengali
+    }
+    
+    temp_audio_path = None
+    try:
+        from gtts import gTTS
+        
+        # Get the appropriate language code for gTTS
+        tts_lang = lang_to_gtts.get(request.lang, "en")
+        
+        # Create gTTS instance with slow=False for natural speed
+        tts = gTTS(text=request.text, lang=tts_lang, slow=False)
+        
+        # Generate audio to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
+            temp_audio_path = temp_audio.name
+        
+        # Save the audio
+        tts.save(temp_audio_path)
+        
+        # Read the generated audio file
+        with open(temp_audio_path, 'rb') as audio_file:
+            audio_data = audio_file.read()
+        
+        # Encode as base64
+        audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+        
+        return {
+            "audio_data": audio_base64,
+            "format": "mp3",
+            "text": request.text,
+            "lang": request.lang,
+            "status": "success"
+        }
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Text-to-speech failed: {str(e)}"
         )
     finally:
         if temp_audio_path and os.path.exists(temp_audio_path):
@@ -814,6 +928,7 @@ async def server_info():
             "text_translation": INDIC_AVAILABLE or GOOGLETRANS_AVAILABLE,
             "voice_recognition": WHISPER_AVAILABLE or SPEECH_RECOGNITION_AVAILABLE,
             "whisper_available": WHISPER_AVAILABLE,
+            "text_to_speech": TTS_AVAILABLE,
             "ocr": OCR_AVAILABLE
         },
         "endpoints": [
@@ -828,6 +943,7 @@ async def server_info():
             "/api/info",
             "/api/translate/text",
             "/api/translate/voice",
+            "/api/tts/synthesize",
             "/api/translate/photo",
             "/api/ocr/extract"
         ]

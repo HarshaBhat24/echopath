@@ -15,12 +15,14 @@ function VoiceTranslation() {
   const [sourceLang, setSourceLang] = useState('auto')
   const [targetLang, setTargetLang] = useState('ka')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isPlayingTTS, setIsPlayingTTS] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [inputMode, setInputMode] = useState('record') // 'record' or 'upload'
   const mediaRecorderRef = useRef(null)
   const audioChunksRef = useRef([])
   const intervalRef = useRef(null)
   const fileInputRef = useRef(null)
+  const ttsAudioRef = useRef(null)
   const navigate = useNavigate()
 
   const languages = [
@@ -203,6 +205,78 @@ function VoiceTranslation() {
       const audio = new Audio(URL.createObjectURL(audioBlob))
       audio.play()
     }
+  }
+
+  const playTranslatedAudio = async () => {
+    if (!translatedText) return
+    
+    setIsPlayingTTS(true)
+    try {
+      // Get API token
+      let token = localStorage.getItem('api_token')
+      if (!token && auth?.currentUser) {
+        const idToken = await auth.currentUser.getIdToken()
+        const resp = await fetch('http://localhost:8000/api/auth/firebase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ firebase_token: idToken })
+        })
+        if (resp.ok) {
+          const data = await resp.json()
+          token = data?.access_token
+          if (token) localStorage.setItem('api_token', token)
+        }
+      }
+
+      // Call TTS endpoint
+      const response = await fetch('http://localhost:8000/api/tts/synthesize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({
+          text: translatedText,
+          lang: targetLang
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Convert base64 to audio blob (MP3 format for gTTS)
+        const audioData = atob(data.audio_data)
+        const audioArray = new Uint8Array(audioData.length)
+        for (let i = 0; i < audioData.length; i++) {
+          audioArray[i] = audioData.charCodeAt(i)
+        }
+        // Use the format returned by the API (mp3 for gTTS)
+        const mimeType = data.format === 'mp3' ? 'audio/mpeg' : 'audio/wav'
+        const audioBlob = new Blob([audioArray], { type: mimeType })
+        const audioUrl = URL.createObjectURL(audioBlob)
+        
+        // Play the audio
+        if (ttsAudioRef.current) {
+          ttsAudioRef.current.pause()
+        }
+        ttsAudioRef.current = new Audio(audioUrl)
+        ttsAudioRef.current.onended = () => setIsPlayingTTS(false)
+        ttsAudioRef.current.play()
+      } else {
+        throw new Error('TTS failed')
+      }
+    } catch (error) {
+      console.error('TTS error:', error)
+      alert('Failed to generate speech. Please try again.')
+      setIsPlayingTTS(false)
+    }
+  }
+
+  const stopTranslatedAudio = () => {
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause()
+      ttsAudioRef.current = null
+    }
+    setIsPlayingTTS(false)
   }
 
   const formatTime = (seconds) => {
@@ -552,15 +626,35 @@ function VoiceTranslation() {
                     </h3>
                   </div>
                   {translatedText && (
-                    <button
-                      onClick={() => navigator.clipboard.writeText(translatedText)}
-                      className="text-white/70 hover:text-white transition-all duration-300 p-3 rounded-xl hover:bg-white/20 shadow-lg"
-                      title="Copy translation"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={isPlayingTTS ? stopTranslatedAudio : playTranslatedAudio}
+                        className={`text-white/70 hover:text-white transition-all duration-300 p-3 rounded-xl hover:bg-white/20 shadow-lg ${
+                          isPlayingTTS ? 'bg-green-500/30 animate-pulse' : ''
+                        }`}
+                        title={isPlayingTTS ? 'Stop audio' : 'Play translated audio'}
+                      >
+                        {isPlayingTTS ? (
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10h.01M15 10h.01" />
+                          </svg>
+                        ) : (
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                          </svg>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(translatedText)}
+                        className="text-white/70 hover:text-white transition-all duration-300 p-3 rounded-xl hover:bg-white/20 shadow-lg"
+                        title="Copy translation"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div>
                   )}
                 </div>
                 <div className="p-6">
