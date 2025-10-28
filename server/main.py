@@ -10,6 +10,15 @@ import os
 import io
 import tempfile
 import base64
+
+# Check Whisper availability
+WHISPER_AVAILABLE = False
+try:
+    import whisper  # type: ignore
+    WHISPER_AVAILABLE = True
+except ImportError:
+    print("Warning: openai-whisper not available. Install with: pip install openai-whisper")
+
 # Whisper model cache
 _WHISPER_MODEL = None
 
@@ -133,7 +142,7 @@ class TranslationResponse(BaseModel):
     translated_text: str
     romanized_text: str | None = None
     source_lang: str
-    target_lang: str
+    target_lang: str        
     status: str
 
 class VoiceTranslationResponse(BaseModel):
@@ -803,7 +812,8 @@ async def server_info():
         "supported_auth_providers": ["email", "google", "firebase"],
         "translation_services": {
             "text_translation": INDIC_AVAILABLE or GOOGLETRANS_AVAILABLE,
-            "voice_recognition": SPEECH_RECOGNITION_AVAILABLE,
+            "voice_recognition": WHISPER_AVAILABLE or SPEECH_RECOGNITION_AVAILABLE,
+            "whisper_available": WHISPER_AVAILABLE,
             "ocr": OCR_AVAILABLE
         },
         "endpoints": [

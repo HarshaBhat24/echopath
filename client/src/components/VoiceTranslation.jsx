@@ -8,15 +8,19 @@ function VoiceTranslation() {
   const [loading, setLoading] = useState(true)
   const [isRecording, setIsRecording] = useState(false)
   const [audioBlob, setAudioBlob] = useState(null)
+  const [uploadedFile, setUploadedFile] = useState(null)
   const [transcribedText, setTranscribedText] = useState('')
   const [translatedText, setTranslatedText] = useState('')
+  const [romanizedText, setRomanizedText] = useState('')
   const [sourceLang, setSourceLang] = useState('auto')
   const [targetLang, setTargetLang] = useState('ka')
   const [isProcessing, setIsProcessing] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
+  const [inputMode, setInputMode] = useState('record') // 'record' or 'upload'
   const mediaRecorderRef = useRef(null)
   const audioChunksRef = useRef([])
   const intervalRef = useRef(null)
+  const fileInputRef = useRef(null)
   const navigate = useNavigate()
 
   const languages = [
@@ -94,13 +98,44 @@ function VoiceTranslation() {
     }
   }
 
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0]
+    if (file) {
+      // Check if it's an audio file
+      if (!file.type.startsWith('audio/')) {
+        alert('Please upload an audio file (mp3, wav, m4a, etc.)')
+        return
+      }
+      setUploadedFile(file)
+      setAudioBlob(null) // Clear any recorded audio
+      setTranscribedText('')
+      setTranslatedText('')
+      setRomanizedText('')
+    }
+  }
+
+  const clearUploadedFile = () => {
+    setUploadedFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+    setTranscribedText('')
+    setTranslatedText('')
+    setRomanizedText('')
+  }
+
   const handleTranslate = async () => {
-    if (!audioBlob) return
+    const audioToTranslate = uploadedFile || audioBlob
+    if (!audioToTranslate) return
 
     setIsProcessing(true)
     try {
       const formData = new FormData()
-      formData.append('audio', audioBlob, 'recording.wav')
+      if (uploadedFile) {
+        formData.append('audio', uploadedFile)
+      } else {
+        formData.append('audio', audioBlob, 'recording.wav')
+      }
   formData.append('source_lang', sourceLang)
   formData.append('target_lang', targetLang)
 
@@ -134,10 +169,7 @@ function VoiceTranslation() {
         const data = await response.json()
         setTranscribedText(data.transcribed_text)
         setTranslatedText(data.translated_text)
-        // Optionally display romanized text below translation
-        if (data.romanized_text) {
-          setTranslatedText(`${data.translated_text} \n(${data.romanized_text})`)
-        }
+        setRomanizedText(data.romanized_text || '')
       } else {
         throw new Error('Translation failed')
       }
@@ -145,6 +177,7 @@ function VoiceTranslation() {
       console.error('Translation error:', error)
       setTranscribedText('Transcription failed. Please try again.')
       setTranslatedText('Translation failed. Please try again.')
+      setRomanizedText('')
     } finally {
       setIsProcessing(false)
     }
@@ -152,22 +185,30 @@ function VoiceTranslation() {
 
   const clearRecording = () => {
     setAudioBlob(null)
+    setUploadedFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
     setTranscribedText('')
     setTranslatedText('')
+    setRomanizedText('')
     setRecordingTime(0)
+  }
+
+  const playRecording = () => {
+    if (uploadedFile) {
+      const audio = new Audio(URL.createObjectURL(uploadedFile))
+      audio.play()
+    } else if (audioBlob) {
+      const audio = new Audio(URL.createObjectURL(audioBlob))
+      audio.play()
+    }
   }
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
-  const playRecording = () => {
-    if (audioBlob) {
-      const audio = new Audio(URL.createObjectURL(audioBlob))
-      audio.play()
-    }
   }
 
   if (loading) {
@@ -291,77 +332,185 @@ function VoiceTranslation() {
 
           {/* Recording Interface */}
           <div className="card p-12 mb-10 shadow-2xl hover:shadow-blue-500/25 transition-all duration-500">
-            <div className="text-center">
-              <div className="mb-8">
-                <div className={`w-40 h-40 mx-auto rounded-full flex items-center justify-center text-6xl transition-all duration-300 shadow-2xl ${
-                  isRecording 
-                    ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white animate-pulse scale-110' 
-                    : 'bg-gradient-to-br from-white/20 to-white/10 text-white border-2 border-white/30 hover:scale-105'
-                }`}>
-                  🎤
-                </div>
+            {/* Mode Toggle */}
+            <div className="flex justify-center mb-8">
+              <div className="inline-flex rounded-2xl bg-white/10 backdrop-blur-xl p-1.5 border border-white/20">
+                <button
+                  onClick={() => {
+                    setInputMode('record')
+                    clearRecording()
+                  }}
+                  className={`px-8 py-3 rounded-xl font-semibold text-lg transition-all duration-300 ${
+                    inputMode === 'record'
+                      ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  🎙️ Record Audio
+                </button>
+                <button
+                  onClick={() => {
+                    setInputMode('upload')
+                    clearRecording()
+                  }}
+                  className={`px-8 py-3 rounded-xl font-semibold text-lg transition-all duration-300 ${
+                    inputMode === 'upload'
+                      ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  📁 Upload Audio
+                </button>
               </div>
-              
-              {isRecording && (
-                <div className="mb-6">
-                  <p className="text-2xl font-bold text-white drop-shadow-lg animate-pulse">
-                    Recording: {formatTime(recordingTime)}
-                  </p>
+            </div>
+
+            {/* Recording Mode */}
+            {inputMode === 'record' && (
+              <div className="text-center">
+                <div className="mb-8">
+                  <div className={`w-40 h-40 mx-auto rounded-full flex items-center justify-center text-6xl transition-all duration-300 shadow-2xl ${
+                    isRecording 
+                      ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white animate-pulse scale-110' 
+                      : 'bg-gradient-to-br from-white/20 to-white/10 text-white border-2 border-white/30 hover:scale-105'
+                  }`}>
+                    🎤
+                  </div>
                 </div>
-              )}
-              
-              <div className="flex justify-center space-x-4 mb-6">
-                {!isRecording ? (
-                  <button
-                    onClick={startRecording}
-                    className="px-10 py-4 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-2xl hover:from-violet-700 hover:to-purple-700 transition-all duration-300 shadow-2xl hover:shadow-purple-500/50 font-semibold text-lg"
-                  >
-                    🎙️ Start Recording
-                  </button>
-                ) : (
-                  <button
-                    onClick={stopRecording}
-                    className="px-10 py-4 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-2xl hover:from-red-700 hover:to-rose-700 transition-all duration-300 shadow-2xl hover:shadow-red-500/50 font-semibold text-lg animate-pulse"
-                  >
-                    ⏹️ Stop Recording
-                  </button>
+                
+                {isRecording && (
+                  <div className="mb-6">
+                    <p className="text-2xl font-bold text-white drop-shadow-lg animate-pulse">
+                      Recording: {formatTime(recordingTime)}
+                    </p>
+                  </div>
                 )}
                 
+                <div className="flex justify-center space-x-4 mb-6">
+                  {!isRecording ? (
+                    <button
+                      onClick={startRecording}
+                      className="px-10 py-4 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-2xl hover:from-violet-700 hover:to-purple-700 transition-all duration-300 shadow-2xl hover:shadow-purple-500/50 font-semibold text-lg"
+                    >
+                      🎙️ Start Recording
+                    </button>
+                  ) : (
+                    <button
+                      onClick={stopRecording}
+                      className="px-10 py-4 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-2xl hover:from-red-700 hover:to-rose-700 transition-all duration-300 shadow-2xl hover:shadow-red-500/50 font-semibold text-lg animate-pulse"
+                    >
+                      ⏹️ Stop Recording
+                    </button>
+                  )}
+                  
+                  {audioBlob && !isRecording && (
+                    <>
+                      <button
+                        onClick={playRecording}
+                        className="px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-2xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-2xl hover:shadow-green-500/50 font-semibold text-lg"
+                      >
+                        ▶️ Play
+                      </button>
+                      <button
+                        onClick={clearRecording}
+                        className="px-8 py-4 bg-white/15 backdrop-blur-xl text-white rounded-2xl hover:bg-white/25 transition-all duration-300 shadow-xl font-semibold text-lg border border-white/20"
+                      >
+                        🗑️ Clear
+                      </button>
+                    </>
+                  )}
+                </div>
+                
                 {audioBlob && !isRecording && (
-                  <>
-                    <button
-                      onClick={playRecording}
-                      className="px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-2xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-2xl hover:shadow-green-500/50 font-semibold text-lg"
-                    >
-                      ▶️ Play
-                    </button>
-                    <button
-                      onClick={clearRecording}
-                      className="px-8 py-4 bg-white/15 backdrop-blur-xl text-white rounded-2xl hover:bg-white/25 transition-all duration-300 shadow-xl font-semibold text-lg border border-white/20"
-                    >
-                      🗑️ Clear
-                    </button>
-                  </>
+                  <button
+                    onClick={handleTranslate}
+                    disabled={isProcessing}
+                    className="px-12 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-2xl hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-2xl hover:shadow-blue-500/50 font-semibold text-lg"
+                  >
+                    {isProcessing ? (
+                      <div className="flex items-center space-x-3">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                        <span>Processing Magic...</span>
+                      </div>
+                    ) : (
+                      '✨ Translate Audio'
+                    )}
+                  </button>
                 )}
               </div>
-              
-              {audioBlob && !isRecording && (
-                <button
-                  onClick={handleTranslate}
-                  disabled={isProcessing}
-                  className="px-12 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-2xl hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-2xl hover:shadow-blue-500/50 font-semibold text-lg"
-                >
-                  {isProcessing ? (
-                    <div className="flex items-center space-x-3">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                      <span>Processing Magic...</span>
+            )}
+
+            {/* Upload Mode */}
+            {inputMode === 'upload' && (
+              <div className="text-center">
+                <div className="mb-8">
+                  <div className="w-40 h-40 mx-auto rounded-full flex items-center justify-center text-6xl bg-gradient-to-br from-white/20 to-white/10 text-white border-2 border-white/30 hover:scale-105 transition-all duration-300 shadow-2xl">
+                    📁
+                  </div>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="audio/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="audio-upload"
+                />
+
+                {!uploadedFile ? (
+                  <label
+                    htmlFor="audio-upload"
+                    className="inline-block px-10 py-4 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-2xl hover:from-violet-700 hover:to-purple-700 transition-all duration-300 shadow-2xl hover:shadow-purple-500/50 font-semibold text-lg cursor-pointer"
+                  >
+                    📤 Choose Audio File
+                  </label>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="inline-flex items-center space-x-4 px-6 py-4 bg-white/10 backdrop-blur-xl rounded-2xl border border-white/20">
+                      <span className="text-2xl">🎵</span>
+                      <span className="text-white font-semibold text-lg">{uploadedFile.name}</span>
+                      <span className="text-white/60 text-sm">({(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)</span>
                     </div>
-                  ) : (
-                    '✨ Translate Audio'
-                  )}
-                </button>
-              )}
-            </div>
+
+                    <div className="flex justify-center space-x-4">
+                      <button
+                        onClick={playRecording}
+                        className="px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-2xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-2xl hover:shadow-green-500/50 font-semibold text-lg"
+                      >
+                        ▶️ Play
+                      </button>
+                      <button
+                        onClick={clearUploadedFile}
+                        className="px-8 py-4 bg-white/15 backdrop-blur-xl text-white rounded-2xl hover:bg-white/25 transition-all duration-300 shadow-xl font-semibold text-lg border border-white/20"
+                      >
+                        🗑️ Remove
+                      </button>
+                      <label
+                        htmlFor="audio-upload"
+                        className="px-8 py-4 bg-white/15 backdrop-blur-xl text-white rounded-2xl hover:bg-white/25 transition-all duration-300 shadow-xl font-semibold text-lg border border-white/20 cursor-pointer"
+                      >
+                        🔄 Change File
+                      </label>
+                    </div>
+
+                    <button
+                      onClick={handleTranslate}
+                      disabled={isProcessing}
+                      className="px-12 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-2xl hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-2xl hover:shadow-blue-500/50 font-semibold text-lg"
+                    >
+                      {isProcessing ? (
+                        <div className="flex items-center space-x-3">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                          <span>Processing Magic...</span>
+                        </div>
+                      ) : (
+                        '✨ Translate Audio'
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Results */}
@@ -417,9 +566,18 @@ function VoiceTranslation() {
                 <div className="p-6">
                   <div className="w-full min-h-48 max-h-64 overflow-y-auto">
                     {translatedText ? (
-                      <p className="text-white text-xl leading-relaxed whitespace-pre-wrap break-words w-full font-medium">
-                        {translatedText}
-                      </p>
+                      <div className="space-y-4">
+                        <p className="text-white text-xl leading-relaxed whitespace-pre-wrap break-words w-full font-medium">
+                          {translatedText}
+                        </p>
+                        {romanizedText && (
+                          <div className="pt-4 border-t border-white/20">
+                            <p className="text-purple-200 text-lg italic leading-relaxed whitespace-pre-wrap break-words w-full">
+                              {romanizedText}
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <div className="flex flex-col items-center justify-center w-full h-48 text-white/70">
                         <div className="text-6xl mb-4 opacity-50">🌟</div>
