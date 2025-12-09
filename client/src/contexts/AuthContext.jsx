@@ -6,7 +6,8 @@ import {
   logOut, 
   onAuthStateChange,
   getCurrentUser,
-  getUserProfile
+  getUserProfile,
+  updateUserProfile
 } from '../firebase/auth.js';
 import { auth } from '../firebase/config.js';
 import axios from 'axios';
@@ -170,6 +171,22 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateProfile = async (profileData) => {
+    if (!user) return { success: false, error: 'No user logged in' };
+    
+    try {
+      const result = await updateUserProfile(user.uid, profileData);
+      if (result.success) {
+        // Reload user profile after update
+        await loadUserProfile(user.uid);
+      }
+      return result;
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
   const value = {
     user,
     userProfile,
@@ -179,7 +196,8 @@ export const AuthProvider = ({ children }) => {
     signUp,
     signInGoogle,
     signOut,
-    loadUserProfile
+    loadUserProfile,
+    updateProfile
   };
 
   return (

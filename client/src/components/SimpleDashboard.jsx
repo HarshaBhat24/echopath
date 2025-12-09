@@ -1,31 +1,34 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { signOut, onAuthStateChanged } from 'firebase/auth'
+import { signOut } from 'firebase/auth'
 import { auth } from '../firebase/config'
+import { useAuth } from '../contexts/AuthContext'
 import translationImage from '../assets/translation.png'
 import voiceImage from '../assets/voice.png'
 import photoImage from '../assets/photo.png'
 
 
 function SimpleDashboard() {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [showProfile, setShowProfile] = useState(false)
+  const [primaryLanguage, setPrimaryLanguage] = useState('')
+  const [savingLanguage, setSavingLanguage] = useState(false)
+  const { user, userProfile, updateProfile, loading } = useAuth()
   const navigate = useNavigate()
   const profileRef = useRef(null)
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser)
-      } else {
-        navigate('/login')
-      }
-      setLoading(false)
-    })
+    // Redirect to login if no user
+    if (!loading && !user) {
+      navigate('/login')
+    }
+  }, [user, loading, navigate])
 
-    return () => unsubscribe()
-  }, [navigate])
+  useEffect(() => {
+    // Load primary language from profile
+    if (userProfile?.primaryLanguage) {
+      setPrimaryLanguage(userProfile.primaryLanguage)
+    }
+  }, [userProfile])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -50,6 +53,30 @@ function SimpleDashboard() {
       navigate('/login')
     } catch (error) {
       console.error('Sign out error:', error)
+    }
+  }
+
+  const handleSavePrimaryLanguage = async () => {
+    if (!primaryLanguage) return
+    
+    setSavingLanguage(true)
+    try {
+      console.log('Saving primary language:', primaryLanguage)
+      const result = await updateProfile({ primaryLanguage })
+      console.log('Save result:', result)
+      if (result.success) {
+        console.log('Primary language saved successfully')
+        // Show a brief success indication
+        setTimeout(() => {
+          setSavingLanguage(false)
+        }, 500)
+      } else {
+        console.error('Failed to save primary language:', result.error)
+        setSavingLanguage(false)
+      }
+    } catch (error) {
+      console.error('Error saving primary language:', error)
+      setSavingLanguage(false)
     }
   }
 
@@ -161,6 +188,30 @@ function SimpleDashboard() {
                       })}
                     </span>
                   </div>
+                </div>
+                <div className="border-t border-white/20 pt-4 mt-4">
+                  <label className="block text-sm text-white/70 mb-2">Primary Language:</label>
+                  <select
+                    value={primaryLanguage}
+                    onChange={(e) => setPrimaryLanguage(e.target.value)}
+                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/50 transition-all duration-300"
+                  >
+                    <option value="" className="bg-gray-800">Select Language</option>
+                    <option value="en" className="bg-gray-800">🇬🇧 English</option>
+                    <option value="hi" className="bg-gray-800">🇮🇳 Hindi</option>
+                    <option value="ka" className="bg-gray-800">🇮🇳 Kannada</option>
+                    <option value="ta" className="bg-gray-800">🇮🇳 Tamil</option>
+                    <option value="te" className="bg-gray-800">🇮🇳 Telugu</option>
+                    <option value="ma" className="bg-gray-800">🇮🇳 Malayalam</option>
+                    <option value="be" className="bg-gray-800">🇮🇳 Bengali</option>
+                  </select>
+                  <button
+                    onClick={handleSavePrimaryLanguage}
+                    disabled={!primaryLanguage || savingLanguage}
+                    className="mt-3 w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-medium rounded-xl transition-all duration-300 shadow-lg hover:shadow-purple-500/25 focus:ring-4 focus:ring-purple-400/50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    {savingLanguage ? '💾 Saving...' : '💾 Save Language'}
+                  </button>
                 </div>
                 <button 
                   onClick={handleSignOut} 

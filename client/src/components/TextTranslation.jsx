@@ -3,6 +3,7 @@ import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../firebase/config'
+import { useAuth } from '../contexts/AuthContext'
 
 function TextTranslation() {
   const [user, setUser] = useState(null)
@@ -11,9 +12,14 @@ function TextTranslation() {
   const [translatedText, setTranslatedText] = useState('')
   const [romanizedText, setRomanizedText] = useState('')
   const [sourceLang, setSourceLang] = useState('auto')
-  const [targetLang, setTargetLang] = useState('hi')
+  const [targetLang, setTargetLang] = useState('en')
   const [isTranslating, setIsTranslating] = useState(false)
   const [animateTranslation, setAnimateTranslation] = useState(false)
+  const [showFeedback, setShowFeedback] = useState(false)
+  const [feedbackRating, setFeedbackRating] = useState(0)
+  const [feedbackComment, setFeedbackComment] = useState('')
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
+  const { userProfile } = useAuth()
   const navigate = useNavigate()
 
   const languages = [
@@ -39,6 +45,13 @@ function TextTranslation() {
 
     return () => unsubscribe()
   }, [navigate])
+
+  useEffect(() => {
+    // Set target language to user's primary language if available
+    if (userProfile?.primaryLanguage) {
+      setTargetLang(userProfile.primaryLanguage)
+    }
+  }, [userProfile])
 
   const handleTranslate = async () => {
     if (!inputText.trim()) return
@@ -78,6 +91,11 @@ function TextTranslation() {
       setTranslatedText(data.translated_text)
       setRomanizedText(data.romanized_text || '')
       setTimeout(() => setAnimateTranslation(false), 1000)
+      // Show feedback after successful translation
+      setShowFeedback(true)
+      setFeedbackSubmitted(false)
+      setFeedbackRating(0)
+      setFeedbackComment('')
     } catch (error) {
       console.error('Translation error:', error)
       const detail = error?.response?.data?.detail
@@ -94,6 +112,28 @@ function TextTranslation() {
     setTranslatedText('')
     setRomanizedText('')
     setAnimateTranslation(false)
+    setShowFeedback(false)
+    setFeedbackSubmitted(false)
+  }
+
+  const handleFeedbackSubmit = () => {
+    if (feedbackRating === 0) {
+      alert('Please select a rating')
+      return
+    }
+    
+    console.log('Feedback submitted:', {
+      rating: feedbackRating,
+      comment: feedbackComment,
+      sourceLang,
+      targetLang,
+      timestamp: new Date().toISOString()
+    })
+    
+    setFeedbackSubmitted(true)
+    setTimeout(() => {
+      setShowFeedback(false)
+    }, 2000)
   }
 
   const swapLanguages = () => {
@@ -338,6 +378,73 @@ function TextTranslation() {
               </div>
             </div>
           </div>
+
+          {/* Feedback Box */}
+          {showFeedback && translatedText && (
+            <div className="mt-10 card shadow-2xl animate-fade-in">
+              <div className="p-6 border-b border-white/20 bg-gradient-to-r from-white/10 to-transparent">
+                <h3 className="text-2xl font-bold text-white drop-shadow-lg flex items-center space-x-3">
+                  <span>💭</span>
+                  <span>How was the translation?</span>
+                </h3>
+              </div>
+              <div className="p-6">
+                {feedbackSubmitted ? (
+                  <div className="text-center py-8">
+                    <div className="text-6xl mb-4">🎉</div>
+                    <p className="text-white text-xl font-semibold">Thank you for your feedback!</p>
+                    <p className="text-white/70 mt-2">Your input helps us improve</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Star Rating */}
+                    <div>
+                      <label className="block text-white text-lg font-semibold mb-3">Rate the translation quality:</label>
+                      <div className="flex space-x-3 justify-center">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            onClick={() => setFeedbackRating(star)}
+                            className="text-5xl transition-all duration-300 hover:scale-125 focus:outline-none"
+                          >
+                            {star <= feedbackRating ? '⭐' : '☆'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Comment Box */}
+                    <div>
+                      <label className="block text-white text-lg font-semibold mb-3">Additional comments (optional):</label>
+                      <textarea
+                        value={feedbackComment}
+                        onChange={(e) => setFeedbackComment(e.target.value)}
+                        placeholder="Tell us more about your experience..."
+                        className="w-full h-24 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 resize-none focus:outline-none focus:ring-2 focus:ring-purple-400/50 transition-all duration-300"
+                      />
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex space-x-4 justify-end">
+                      <button
+                        onClick={() => setShowFeedback(false)}
+                        className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-medium rounded-xl transition-all duration-300 border border-white/20"
+                      >
+                        Skip
+                      </button>
+                      <button
+                        onClick={handleFeedbackSubmit}
+                        disabled={feedbackRating === 0}
+                        className="px-8 py-3 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl transition-all duration-300 shadow-lg hover:shadow-purple-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Submit Feedback
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
