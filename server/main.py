@@ -41,6 +41,9 @@ from auth import (
     verify_google_token, create_google_user, FirebaseAuthRequest, verify_firebase_token
 )
 
+# Import Firebase service
+from firebase_service import firebase_service
+
 # Translation related imports
 try:
     from googletrans import Translator
@@ -185,6 +188,20 @@ class TTSRequest(BaseModel):
     text: str
     lang: str = "en"  # Language code (en, hi, ka, ta, te, ma, be)
 
+class TranslationHistoryItem(BaseModel):
+    id: str | None = None
+    type: str  # 'text', 'voice', 'photo'
+    originalText: str
+    translatedText: str
+    romanizedText: str | None = None
+    sourceLang: str
+    targetLang: str
+    timestamp: str | None = None
+
+class TranslationHistoryResponse(BaseModel):
+    history: list[TranslationHistoryItem]
+    total: int
+
 # OAuth2 scheme for JWT tokens
 
 
@@ -298,16 +315,23 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
     except Exception:
         HAVE_ROM = False
     
+    translated_text = None
+    romanized_text = None
+    source_lang_tag = request.source_lang
+    target_lang_tag = request.target_lang
+    
     # Prefer IndicTrans2 if available, else fallback to googletrans
     if INDIC_AVAILABLE:
         try:
             svc = IndicTransService.get()
-            translated, src_tag, tgt_tag = svc.translate(
+            translated_text, src_tag, tgt_tag = svc.translate(
                 request.text, request.source_lang, request.target_lang
             )
+            source_lang_tag = src_tag
+            target_lang_tag = tgt_tag
             
             # Romanize for Indic languages (only if target is not English)
-            romanized = None
+            romanized_text = None
             if HAVE_ROM and tgt_tag != "eng_Latn":
                 try:
                     tag_to_scheme = {
@@ -320,19 +344,11 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
                     }
                     scheme = tag_to_scheme.get(tgt_tag)
                     if scheme:
-                        romanized = _transliterate(translated, scheme, _sanscript.IAST)
+                        romanized_text = _transliterate(translated_text, scheme, _sanscript.IAST)
                 except Exception as rom_err:
                     print(f"Romanization error: {rom_err}")
-                    romanized = None
+                    romanized_text = None
             
-            return TranslationResponse(
-                original_text=request.text,
-                translated_text=translated,
-                romanized_text=romanized,
-                source_lang=src_tag,
-                target_lang=tgt_tag,
-                status="success"
-            )
         except ValueError as ve:
             print(f"IndicTrans2 ValueError: {ve}")
             # If unsupported code caused failure and googletrans is available, try fallback
@@ -343,29 +359,24 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
                         translation = translator.translate(
                             request.text, dest=_map_gtrans(request.target_lang)
                         )
-                        detected_lang = translation.src
+                        source_lang_tag = translation.src
                     else:
                         translation = translator.translate(
                             request.text,
                             src=_map_gtrans(request.source_lang),
                             dest=_map_gtrans(request.target_lang),
                         )
-                        detected_lang = request.source_lang
-                    return TranslationResponse(
-                        original_text=request.text,
-                        translated_text=translation.text,
-                        romanized_text=None,  # googletrans fallback doesn't support romanization
-                        source_lang=detected_lang,
-                        target_lang=request.target_lang,
-                        status="success(fallback)"
-                    )
+                        source_lang_tag = request.source_lang
+                    translated_text = translation.text
+                    target_lang_tag = request.target_lang
                 except Exception as fallback_err:
                     print(f"Googletrans fallback error: {fallback_err}")
                     pass
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(ve)
-            )
+            if not translated_text:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(ve)
+                )
         except Exception as e:
             print(f"IndicTrans2 general error: {e}")
             # If IndicTrans2 fails and googletrans is available, try fallback
@@ -374,27 +385,22 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
                     translator = Translator()
                     if request.source_lang == "auto":
                         translation = translator.translate(request.text, dest=request.target_lang)
-                        detected_lang = translation.src
+                        source_lang_tag = translation.src
                     else:
                         translation = translator.translate(
                             request.text, src=request.source_lang, dest=request.target_lang
                         )
-                        detected_lang = request.source_lang
-                    return TranslationResponse(
-                        original_text=request.text,
-                        translated_text=translation.text,
-                        romanized_text=None,  # googletrans fallback doesn't support romanization
-                        source_lang=detected_lang,
-                        target_lang=request.target_lang,
-                        status="success(fallback)"
-                    )
+                        source_lang_tag = request.source_lang
+                    translated_text = translation.text
+                    target_lang_tag = request.target_lang
                 except Exception as fallback_err2:
                     print(f"Googletrans fallback error 2: {fallback_err2}")
                     pass
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Translation failed: {str(e)}"
-            )
+            if not translated_text:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Translation failed: {str(e)}"
+                )
     else:
         if not GOOGLETRANS_AVAILABLE:
             raise HTTPException(
@@ -407,27 +413,46 @@ async def translate_text_endpoint(request: TextTranslationRequest, current_user:
                 translation = translator.translate(
                     request.text, dest=_map_gtrans(request.target_lang)
                 )
-                detected_lang = translation.src
+                source_lang_tag = translation.src
             else:
                 translation = translator.translate(
                     request.text,
                     src=_map_gtrans(request.source_lang),
                     dest=_map_gtrans(request.target_lang),
                 )
-                detected_lang = request.source_lang
-            return TranslationResponse(
-                original_text=request.text,
-                translated_text=translation.text,
-                romanized_text=None,  # googletrans doesn't support romanization
-                source_lang=detected_lang,
-                target_lang=request.target_lang,
-                status="success"
-            )
+                source_lang_tag = request.source_lang
+            translated_text = translation.text
+            target_lang_tag = request.target_lang
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Translation failed: {str(e)}"
             )
+    
+    # Save to translation history if user has uid
+    if hasattr(current_user, 'uid') and current_user.uid:
+        try:
+            history_data = {
+                'type': 'text',
+                'originalText': request.text,
+                'translatedText': translated_text,
+                'romanizedText': romanized_text,
+                'sourceLang': source_lang_tag,
+                'targetLang': target_lang_tag,
+            }
+            firebase_service.save_translation_history(current_user.uid, history_data)
+        except Exception as e:
+            print(f"Failed to save translation history: {e}")
+            # Don't fail the request if history save fails
+    
+    return TranslationResponse(
+        original_text=request.text,
+        translated_text=translated_text,
+        romanized_text=romanized_text,
+        source_lang=source_lang_tag,
+        target_lang=target_lang_tag,
+        status="success"
+    )
 
 @app.post("/api/translate/voice", response_model=VoiceTranslationResponse)
 async def translate_voice_endpoint(
@@ -548,6 +573,21 @@ async def translate_voice_endpoint(
                     romanized = _transliterate(translated, scheme, _sanscript.IAST)
             except Exception:
                 romanized = None
+        
+        # Save to translation history if user has uid
+        if hasattr(current_user, 'uid') and current_user.uid:
+            try:
+                history_data = {
+                    'type': 'voice',
+                    'originalText': transcribed_text,
+                    'translatedText': translated,
+                    'romanizedText': romanized,
+                    'sourceLang': src_tag,
+                    'targetLang': tgt_tag,
+                }
+                firebase_service.save_translation_history(current_user.uid, history_data)
+            except Exception as e:
+                print(f"Failed to save translation history: {e}")
 
         return VoiceTranslationResponse(
             transcribed_text=transcribed_text,
@@ -902,6 +942,21 @@ async def translate_photo_endpoint(
             )
             detected_lang = source_lang
         
+        # Save to translation history if user has uid
+        if hasattr(current_user, 'uid') and current_user.uid:
+            try:
+                history_data = {
+                    'type': 'photo',
+                    'originalText': extracted_text.strip(),
+                    'translatedText': translation.text,
+                    'romanizedText': None,
+                    'sourceLang': detected_lang,
+                    'targetLang': target_lang,
+                }
+                firebase_service.save_translation_history(current_user.uid, history_data)
+            except Exception as e:
+                print(f"Failed to save translation history: {e}")
+        
         return PhotoTranslationResponse(
             extracted_text=extracted_text.strip(),
             translated_text=translation.text,
@@ -945,9 +1000,87 @@ async def server_info():
             "/api/translate/voice",
             "/api/tts/synthesize",
             "/api/translate/photo",
-            "/api/ocr/extract"
+            "/api/ocr/extract",
+            "/api/translation/history",
+            "/api/translation/history/clear"
         ]
     }
+
+# Translation History endpoints
+@app.get("/api/translation/history", response_model=TranslationHistoryResponse)
+async def get_translation_history(
+    limit: int = 50,
+    current_user: User = Depends(get_current_user)
+):
+    """Get user's translation history"""
+    if not hasattr(current_user, 'uid') or not current_user.uid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User UID not found in token"
+        )
+    
+    try:
+        history = firebase_service.get_translation_history(current_user.uid, limit)
+        return TranslationHistoryResponse(
+            history=[TranslationHistoryItem(**item) for item in history],
+            total=len(history)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch translation history: {str(e)}"
+        )
+
+@app.delete("/api/translation/history/{history_id}")
+async def delete_translation_history(
+    history_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a specific translation from history"""
+    if not hasattr(current_user, 'uid') or not current_user.uid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User UID not found in token"
+        )
+    
+    try:
+        success = firebase_service.delete_translation_history_item(current_user.uid, history_id)
+        if success:
+            return {"message": "Translation deleted successfully"}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete translation"
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete translation: {str(e)}"
+        )
+
+@app.post("/api/translation/history/clear")
+async def clear_translation_history(current_user: User = Depends(get_current_user)):
+    """Clear all translation history for the user"""
+    if not hasattr(current_user, 'uid') or not current_user.uid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User UID not found in token"
+        )
+    
+    try:
+        success = firebase_service.clear_translation_history(current_user.uid)
+        if success:
+            return {"message": "Translation history cleared successfully"}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to clear translation history"
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear translation history: {str(e)}"
+        )
 
 @app.post("/api/translate/warmup")
 async def warmup_translation(current_user: User = Depends(get_current_user)):

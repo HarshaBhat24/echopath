@@ -200,6 +200,84 @@ class FirebaseService:
         except Exception as e:
             print(f"Error creating custom token: {e}")
             return None
+    
+    def save_translation_history(self, uid: str, translation_data: Dict[str, Any]) -> bool:
+        """Save a translation to user's history"""
+        try:
+            # Add translation to user's history subcollection
+            history_ref = self.db.collection('users').document(uid).collection('translationHistory')
+            
+            # Add timestamp if not present
+            if 'timestamp' not in translation_data:
+                translation_data['timestamp'] = firestore.SERVER_TIMESTAMP
+            
+            # Add the document
+            history_ref.add(translation_data)
+            print(f"Saved translation history for user {uid}")
+            return True
+        except Exception as e:
+            print(f"Error saving translation history: {e}")
+            return False
+    
+    def get_translation_history(self, uid: str, limit: int = 50) -> list:
+        """Get user's translation history"""
+        try:
+            history_ref = self.db.collection('users').document(uid).collection('translationHistory')
+            
+            # Query translations ordered by timestamp (newest first)
+            query = history_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(limit)
+            docs = query.stream()
+            
+            history = []
+            for doc in docs:
+                data = doc.to_dict()
+                data['id'] = doc.id
+                # Convert timestamp to ISO string if it exists
+                if 'timestamp' in data and data['timestamp']:
+                    data['timestamp'] = data['timestamp'].isoformat()
+                history.append(data)
+            
+            print(f"Retrieved {len(history)} translation history items for user {uid}")
+            return history
+        except Exception as e:
+            print(f"Error getting translation history: {e}")
+            return []
+    
+    def delete_translation_history_item(self, uid: str, history_id: str) -> bool:
+        """Delete a specific translation from history"""
+        try:
+            doc_ref = self.db.collection('users').document(uid).collection('translationHistory').document(history_id)
+            doc_ref.delete()
+            print(f"Deleted translation history item {history_id} for user {uid}")
+            return True
+        except Exception as e:
+            print(f"Error deleting translation history: {e}")
+            return False
+    
+    def clear_translation_history(self, uid: str) -> bool:
+        """Clear all translation history for a user"""
+        try:
+            history_ref = self.db.collection('users').document(uid).collection('translationHistory')
+            docs = history_ref.stream()
+            
+            batch = self.db.batch()
+            count = 0
+            for doc in docs:
+                batch.delete(doc.reference)
+                count += 1
+                # Commit in batches of 500 (Firestore limit)
+                if count % 500 == 0:
+                    batch.commit()
+                    batch = self.db.batch()
+            
+            if count % 500 != 0:
+                batch.commit()
+            
+            print(f"Cleared {count} translation history items for user {uid}")
+            return True
+        except Exception as e:
+            print(f"Error clearing translation history: {e}")
+            return False
 
 # Singleton instance
 firebase_service = FirebaseService()
